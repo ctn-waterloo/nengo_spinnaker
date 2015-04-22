@@ -3,6 +3,144 @@ import collections
 from rig.bitfield import BitField
 
 
+class Keyspace(BitField):
+    """Represent and derive keyspaces for use in multicast packets.
+
+    Nengo/SpiNNaker enforces some additional rules about the structure of
+    keyspaces.  It is often necessary to have a field in the key which
+    indicates which component of a vector the multicast packet represents; the
+    method `add_index_field` can be used to add an index field to a keyspace
+    with a given namespace, and `get_with_index` will return a new keyspace
+    with the field set.  For example::
+
+        >>> ks = Keyspace()
+        >>> ks.get_index()
+        Traceback (most recent call last):
+        ValueError: Keyspace does not have an index field
+        >>> ks.add_index_field("nengo")
+        >>> x = ks.get_with_index(15)
+        >>> x.get_index()
+        15
+
+    Attempting to add an additional index field will fail.::
+
+        >>> ks.add_index_field("oops")
+        Traceback (most recent call last):
+        ValueError: Keyspace already has an index field, "nengo_index"
+
+    The method `get_index_mask` can be used to retrieve the mask from the
+    keyspace.::
+
+        >>> ks.assign_fields()
+        >>> hex(ks.get_index_mask())
+        '0xf'
+    """
+    def _get_index_identifier(self, raise_if_missing=True):
+        """Return the identifier associated with the index field in this
+        keyspace.
+        """
+        for identifier, _ in self._enabled_fields():
+            if "index" == identifier[-5:]:
+                return identifier
+        else:
+            if raise_if_missing:
+                raise ValueError("Keyspace does not have an index field")
+
+    def add_index_field(self, namespace):
+        """Add a field which represents which component of a vector is being
+        represented by the multicast packet.
+
+        Parameters
+        ----------
+        namespace : string
+            Namespace the index field should be added to.
+        """
+        # Check that we don't already have an index field
+        identifier = self._get_index_identifier(raise_if_missing=False)
+        if identifier is not None:
+            raise ValueError(
+                "Keyspace already has an index field, \"{}\"".format(
+                    identifier)
+            )
+
+        # Add the index field
+        self.add_field("{}_index".format(namespace), start_at=0)
+
+    def get_index(self):
+        """Return the value of the index field for this keyspace."""
+        identifier = self._get_index_identifier()
+        return getattr(self, identifier)
+
+    def get_with_index(self, value):
+        """Return a derived keyspace with the index field set."""
+        identifier = self._get_index_identifier()
+        return self(**{identifier: value})
+
+    def get_with_indices(self, values, max_v=None):
+        """Get a generator of keyspaces with the index field filled in with the
+        given values.
+
+        For example::
+
+            >>> ks = Keyspace()
+            >>> ks.add_index_field("nengo")
+            >>> for x in ks.get_with_indices((slice(0, 5), 5, 6, 7,
+            ...                               slice(8, 10))):
+            ...     print(x)
+            <32-bit BitField 'nengo_index':0>
+            <32-bit BitField 'nengo_index':1>
+            <32-bit BitField 'nengo_index':2>
+            <32-bit BitField 'nengo_index':3>
+            <32-bit BitField 'nengo_index':4>
+            <32-bit BitField 'nengo_index':5>
+            <32-bit BitField 'nengo_index':6>
+            <32-bit BitField 'nengo_index':7>
+            <32-bit BitField 'nengo_index':8>
+            <32-bit BitField 'nengo_index':9>
+
+        The minimum value for a slice is taken to be zero, but the max value
+        can be specified:
+
+            >>> for x in ks.get_with_indices(slice(None), max_v=3):
+            ...     print(x)
+            <32-bit BitField 'nengo_index':0>
+            <32-bit BitField 'nengo_index':1>
+            <32-bit BitField 'nengo_index':2>
+
+        A `ValueError` is raised if these values are missing.
+
+            >>> list(ks.get_with_indices(slice(None)))
+            Traceback (most recent call last):
+            ValueError: no stop value specified
+        """
+        def _get_with_indices(v):
+            if isinstance(v, slice):
+                if max_v is None and v.stop is None:
+                    raise ValueError("no stop value specified")
+
+                start = 0 if v.start is None else v.start
+                stop = max_v if v.stop is None else v.stop
+                step = 1 if v.step is None else v.step
+
+                for i in range(start, stop, step):
+                    yield self.get_with_index(i)
+            else:
+                yield self.get_with_index(v)
+
+        if isinstance(values, collections.Iterable):
+            for v in values:
+                for x in _get_with_indices(v):
+                    yield x
+        else:
+            for x in _get_with_indices(values):
+                yield x
+
+    def get_index_mask(self):
+        """Return the mask required to extract the index field."""
+        identifier = self._get_index_identifier()
+        return self.get_mask(field=identifier)
+
+
 class KeyspaceContainer(collections.defaultdict):
     """A container which can recall or allocate specific keyspaces to modules
     and users on request.
@@ -15,6 +153,8 @@ class KeyspaceContainer(collections.defaultdict):
 
         >>> ksc = KeyspaceContainer()
         >>> default_ks = ksc["nengo"]
+        >>> isinstance(default_ks, Keyspace)
+        True
         >>> default_ks.get_tags('nengo_object') == {ksc.routing_tag,
         ...                                         ksc.filter_routing_tag}
         True
@@ -23,11 +163,9 @@ class KeyspaceContainer(collections.defaultdict):
         True
         >>> default_ks.get_tags('nengo_cluster') == {ksc.routing_tag}
         True
-        >>> default_ks.get_tags('nengo_dimension') == {ksc.dimension_tag}
-        True
         >>> default_ks
         <32-bit BitField 'user':0, 'nengo_object':?, 'nengo_cluster':?, \
-'nengo_connection':?, 'nengo_dimension':?>
+'nengo_connection':?, 'nengo_index':?>
 
     Additional keyspaces can be requested and are automagically created.
 
@@ -61,8 +199,6 @@ class KeyspaceContainer(collections.defaultdict):
         'routing'
         >>> ksc.filter_routing_tag
         'filter_routing'
-        >>> ksc.dimension_tag
-        'dimension'
 
     Finally, field sizes may be fixed.
 
@@ -102,18 +238,16 @@ class KeyspaceContainer(collections.defaultdict):
             return new_ks
 
     def __init__(self, routing_tag="routing",
-                 filter_routing_tag="filter_routing",
-                 dimension_tag="dimension"):
+                 filter_routing_tag="filter_routing"):
         """Create a new keyspace container with the given tags for routing and
         filter routing.
         """
         # The tags
         self._routing_tag = routing_tag
         self._filter_routing_tag = filter_routing_tag
-        self._dimension_tag = dimension_tag
 
         # The keyspaces
-        self._master_keyspace = _master_keyspace = BitField(length=32)
+        self._master_keyspace = _master_keyspace = Keyspace(length=32)
         _master_keyspace.add_field(
             "user", tags=[self.routing_tag, self.filter_routing_tag])
 
@@ -128,19 +262,13 @@ class KeyspaceContainer(collections.defaultdict):
         nengo_ks.add_field("nengo_cluster", tags=[self.routing_tag])
         nengo_ks.add_field("nengo_connection", tags=[self.routing_tag,
                                                      self.filter_routing_tag])
-        nengo_ks.add_field("nengo_dimension", tags=self.dimension_tag,
-                           start_at=0)
+        nengo_ks.add_index_field("nengo")
 
     def assign_fields(self):
         """Call `assign_fields` on the master keyspace, forcing field
         assignation for all keyspaces.
         """
         self._master_keyspace.assign_fields()
-
-    @property
-    def dimension_tag(self):
-        """The tag used in extracting dimension data from a key."""
-        return self._dimension_tag
 
     @property
     def routing_tag(self):

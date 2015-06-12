@@ -3,6 +3,9 @@
 from __future__ import absolute_import
 
 import itertools
+import nengo
+from nengo.utils.builder import full_transform
+import numpy as np
 from six import iteritems, itervalues
 
 from nengo_spinnaker.operators import Filter
@@ -82,3 +85,110 @@ def remove_childless_filters(model):
         # signals which have no sinks, we should remove these as it will allow
         # us to find further filters with no children.
         remove_sinkless_signals(model)
+
+
+def remove_passthrough_nodes(model):
+    """Remove passthrough Nodes from the model."""
+    # Find and remove each passthrough Node in turn.  To do this we take all of
+    # the connections feeding in to the passthrough Node and combine them with
+    # the connections leaving the passthrough Node.  We also pair the sources
+    # and sinks of the signals associated with the connections.
+    for obj, op in iteritems(model.object_operators):
+        # If the object is not a Node, or not a passthrough Node then we move
+        # on to the next object.
+        # NOTE: These lines are tested but continue is optimised out.
+        if (not isinstance(obj, nengo.Node) or  # pragma: no branch
+                obj.output is not None):
+            continue  # pragma: no cover
+
+        # The object is a passthrough Node, so we get the list of all incoming
+        # signals and connections and all outgoing signals and connections.  If
+        # there is anything odd we don't bother dealing with this passthrough
+        # Node and move onto the next.
+        incoming_connections_signals = list()
+        valid = True
+        for sig, conns in itertools.chain(
+                *(iteritems(sc) for sc in itervalues(
+                    model.get_signals_connections_to_object(op)))):
+            # We're happy ONLY in cases that there is a pairing of ONE signal
+            # to ONE connection and there is only ONE sink for the signal.
+            if len(conns) != 1 or len(sig.sinks) != 1:
+                valid = False
+                break
+
+            # Just add the pair of signal and connection to the list of
+            # incoming signals and connections.
+            incoming_connections_signals.append((sig, conns[0]))
+
+        if not valid:
+            continue
+
+        outgoing_connections_signals = list()
+        for sig, conns in itertools.chain(
+                *(iteritems(sc) for sc in itervalues(
+                    model.get_signals_connections_from_object(op)))):
+            # We're happy ONLY in cases that there is a pairing of ONE signal
+            # to ONE connection and there is only ONE sink for the signal.
+            if len(conns) != 1 or len(sig.sinks) != 1:
+                valid = False
+                break
+
+            # Just add the pair of signal and connection to the list of
+            # incoming signals and connections.
+            outgoing_connections_signals.append((sig, conns[0]))
+
+        if not valid:
+            continue
+
+        # Try to combine all connections and signals. Multiply the transforms
+        # together to find out what the final transform would be; if this is
+        # zero (a not uncommon occurrence) then don't bother adding the new
+        # signal/connection.  If any of the combinations are not possible then
+        # abort this process (e.g., combining synapses).
+        new_connections = list()
+        for (in_sig, in_conn) in incoming_connections_signals:
+            for (out_sig, out_conn) in outgoing_connections_signals:
+                # If one of the synapses is None then we can continue
+                if (in_conn.synapse is not None and
+                        out_conn.synapse is not None):
+                    valid = False
+                    break
+
+                # If the combination of the transforms is zero then we don't
+                # bother adding a new signal or connection to the model.
+                new_transform = np.dot(
+                    full_transform(out_conn),
+                    full_transform(in_conn)
+                )
+                if np.all(new_transform == 0):
+                    continue
+
+                # Create a new connection to add this to the list of
+                # connections to add.
+                new_connections.append(
+                    nengo.Connection(
+                        in_conn.pre_obj, out_conn.post_obj,
+                        function=in_conn.function,
+                        synapse=in_conn.synapse or out_conn.synapse,
+                        transform=new_transform,
+                        add_to_container=False
+                    )
+                )
+
+            if not valid:
+                break
+
+        if not valid:
+            continue
+
+        # Remove all the incoming and outgoing connections and signals and then
+        # build all the new connections.
+        for (in_sig, in_conn) in incoming_connections_signals:
+            model.connections_signals.pop(in_conn)
+
+        for (out_sig, out_conn) in outgoing_connections_signals:
+            model.connections_signals.pop(out_conn)
+
+        # Build all the new connections
+        for connection in new_connections:
+            model.make_connection(connection)

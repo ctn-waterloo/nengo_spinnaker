@@ -93,6 +93,7 @@ class Simulator(object):
         self.model = Model(dt, decoder_cache=get_default_decoder_cache())
         self.model.build(network, **builder_kwargs)
         model_optimisations.remove_childless_filters(self.model)
+        model_optimisations.remove_passthrough_nodes(self.model)
         logger.info("Build took {:.3f} seconds".format(time.time() -
                                                        start_build))
 

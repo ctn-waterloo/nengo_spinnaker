@@ -21,6 +21,7 @@ ensemble_parameters_t g_ensemble;
 input_filter_t g_input;
 input_filter_t g_input_inhibitory;
 input_filter_t g_input_modulatory;
+input_filter_t g_input_learnt_encoder;
 
 /* Multicast Wrapper ********************************************************/
 void mcpl_rx(uint key, uint payload) 
@@ -29,6 +30,7 @@ void mcpl_rx(uint key, uint payload)
   handled |= input_filter_mcpl_rx(&g_input, key, payload);
   handled |= input_filter_mcpl_rx(&g_input_inhibitory, key, payload);
   handled |= input_filter_mcpl_rx(&g_input_modulatory, key, payload);
+  handled |= input_filter_mcpl_rx(&g_input_learnt_encoder, key, payload);
 
   if(!handled)
   {
@@ -43,15 +45,18 @@ bool initialise_ensemble(region_system_t *pars) {
   g_ensemble.machine_timestep = pars->machine_timestep;
   g_ensemble.t_ref = pars->t_ref;
   g_ensemble.exp_dt_over_t_rc = pars->exp_dt_over_t_rc;
-  g_ensemble.recd.record = pars->record_spikes;
+  g_ensemble.record_spikes.record = pars->record_spikes;
+  g_ensemble.record_learnt_encoders.record = pars->record_learnt_encoders;
   g_ensemble.n_inhib_dims = pars->n_inhibitory_dimensions;
+  g_ensemble.encoder_width = pars->encoder_width;
 
   io_printf(IO_BUF, "[Ensemble] INITIALISE_ENSEMBLE n_neurons = %d," \
-            "timestep = %d, t_ref = %d, exp_dt_over_t_rc = 0x%08x\n",
+            "timestep = %d, t_ref = %d, exp_dt_over_t_rc = 0x%08x, encoder_width = %u\n",
             g_ensemble.n_neurons,
             g_ensemble.machine_timestep,
             g_ensemble.t_ref,
-            g_ensemble.exp_dt_over_t_rc
+            g_ensemble.exp_dt_over_t_rc,
+            g_ensemble.encoder_width
   );
 
   // Holder for bias currents
@@ -71,7 +76,7 @@ bool initialise_ensemble(region_system_t *pars) {
 
   // Initialise some buffers
   MALLOC_FAIL_FALSE(g_ensemble.encoders,
-                    g_ensemble.n_neurons * pars->n_input_dimensions *
+                    g_ensemble.n_neurons * g_ensemble.encoder_width *
                       sizeof(value_t));
 
   MALLOC_FAIL_FALSE(g_ensemble.decoders,
@@ -91,6 +96,8 @@ bool initialise_ensemble(region_system_t *pars) {
   }
   io_printf(IO_BUF, "@\n");
   input_filter_initialise_no_accumulator(&g_input_modulatory);
+  io_printf(IO_BUF, "@\n");
+  input_filter_initialise_no_accumulator(&g_input_learnt_encoder);
   io_printf(IO_BUF, "@\n");
 
   g_ensemble.output = initialise_output(pars);

@@ -33,59 +33,78 @@
 #include "nengo_typedefs.h"
 #include "nengo-common.h"
 
-#include "dimensional-io.h"
+#include "input_filtering.h"
 #include "recording.h"
-#include "input_filter.h"
+#include "record_learnt_encoders.h"
 
 /* Structs ******************************************************************/
 /** \brief Representation of system region. See ::data_system. */
+// **NOTE** it's important to used sized types here!
 typedef struct region_system 
 {
-  uint n_input_dimensions;
-  uint n_output_dimensions;
-  uint n_neurons;
-  uint machine_timestep;
-  uint t_ref;
+  uint32_t n_input_dimensions;
+  uint32_t encoder_width;
+  uint32_t n_output_dimensions;
+  uint32_t n_neurons;
+  uint32_t machine_timestep;
+  uint32_t t_ref;
   value_t exp_dt_over_t_rc;
-  bool record_spikes;
-  uint n_inhibitory_dimensions;
+  uint32_t record_spikes;
+  uint32_t record_learnt_encoders;
+  uint32_t n_inhibitory_dimensions;
+  uint32_t num_profiler_samples;
 } region_system_t;
 
 /** \brief Shared ensemble parameters.
   */
-typedef struct ensemble_parameters {
-  uint n_neurons;          //!< Number of neurons \f$N\f$
-  uint machine_timestep;   //!< Machine time step  / useconds
+typedef struct ensemble_parameters
+{
+  //! Number of neurons \f$N\f$
+  uint n_neurons;
 
-  uint t_ref;              //!< Refractory period \f$\tau_{ref} - 1\f$ / steps
+  //! Machine time step  / useconds
+  uint machine_timestep;
+
+  //! Refractory period \f$\tau_{ref} - 1\f$ / steps
+  uint t_ref;
   value_t exp_dt_over_t_rc;    //!< \f$-\exp{\frac{dt}{\tau_{rc}}}\$
 
-  current_t *i_bias;        //!< Population biases \f$1 \times N\f$
-  value_t *neuron_voltage;  //!< Neuron voltages
-  uint8_t *neuron_refractory;  //!< Refractory states
+  current_t *i_bias;                      //!< Population biases \f$1 \times N\f$
+  value_t *neuron_voltage;                //!< Neuron voltages
+  uint8_t *neuron_refractory;             //!< Refractory states
 
-  uint n_inhib_dims;        //!< Number of dimensions in inhibitory connection
-  value_t *inhib_gain;      //!< Gain of inhibitory connection (value of transform)
+  uint n_inhib_dims;                      //!< Number of dimensions in inhibitory connection
+  value_t *gain;                          //!< Per-neuron gain (value of transform)
 
-  value_t *encoders;        //!< Encoder values \f$N \times D_{in}\f$ (including gains)
-  value_t *decoders;        //!< Decoder values \f$N \times\sum D_{outs}\f$
+  uint encoder_width;
+  value_t *encoders;                      //!< Encoder values \f$N \times D_{in}\f$ (including gains)
+  value_t *decoders;                      //!< Decoder values \f$N \times\sum D_{outs}\f$
 
-  value_t *input;           //!< Input buffer
-  value_t *output;          //!< Output buffer
+  //! Input buffer
+  value_t *input;
 
-  recording_buffer_t recd;  //!< Spike recording
+  //! Output buffer
+  value_t *output;
+
+  //! Spike recording buffer
+  recording_buffer_t record_spikes;
+
+  //! Learnt encoder recording buffer
+  encoder_recording_buffer_t record_learnt_encoders;
 } ensemble_parameters_t;
+
 
 /* Parameters and Buffers ***************************************************/
 extern ensemble_parameters_t g_ensemble;  //!< Global parameters
-extern uint g_output_period;       //!< Delay in transmitting decoded output
+extern uint g_output_period;              //!< Delay in transmitting decoded output
 
 extern uint g_n_output_dimensions;
 
-extern input_filter_t g_input;     //!< Input filters and buffers
-extern input_filter_t g_input_inhibitory;     //!< Input filters and buffers
-extern input_filter_t g_input_modulatory;     //!< Input filters and buffers
-
+extern if_collection_t
+  g_input,             //!< Input filters and buffers
+  g_input_inhibitory,  //!< Input filters and buffers
+  g_input_modulatory,  //!< Input filters and buffers
+  g_input_learnt_encoder;
 /* Functions ****************************************************************/
 /**
  * \brief Initialise the ensemble.
@@ -109,11 +128,20 @@ void ensemble_update( uint arg0, uint arg1 );
 /* Static inline access functions ********************************************/
 // -- Encoder(s) and decoder(s)
 //! Get the encoder value for the given neuron and dimension
-static inline value_t neuron_encoder( uint n, uint d )
-  { return g_ensemble.encoders[ n * g_input.n_dimensions + d ]; };
+static inline value_t neuron_encoder(uint n, uint d)
+{
+  return g_ensemble.encoders[n * g_ensemble.encoder_width + d];
+}
 
-static inline value_t neuron_decoder( uint n, uint d )
-  { return g_ensemble.decoders[ n * g_n_output_dimensions + d ]; };
+static inline value_t *neuron_encoder_vector(uint n)
+{
+  return &g_ensemble.encoders[n * g_ensemble.encoder_width];
+}
+
+static inline value_t neuron_decoder(uint n, uint d)
+{
+  return g_ensemble.decoders[n * g_n_output_dimensions + d];
+}
 
 static inline value_t *neuron_decoder_vector(uint n)
 {
@@ -122,24 +150,34 @@ static inline value_t *neuron_decoder_vector(uint n)
 
 // -- Voltages and refractory periods
 //! Get the membrane voltage for the given neuron
-static inline voltage_t neuron_voltage( uint n )
-  {return g_ensemble.neuron_voltage[n];};
+static inline voltage_t neuron_voltage(uint n)
+{
+  return g_ensemble.neuron_voltage[n];
+}
 
 //! Set the membrane voltage for the given neuron
 static inline void set_neuron_voltage(uint n, voltage_t v)
-  {g_ensemble.neuron_voltage[n] = v;}
+{
+  g_ensemble.neuron_voltage[n] = v;
+}
 
 //! Get the refractory status of a given neuron
 static inline uint8_t neuron_refractory(uint n)
-  {return g_ensemble.neuron_refractory[n];};
+{
+  return g_ensemble.neuron_refractory[n];
+}
 
 //! Put the given neuron in a refractory state (zero voltage, set timer)
-static inline void set_neuron_refractory( uint n )
-  {g_ensemble.neuron_refractory[n] = g_ensemble.t_ref;};
+static inline void set_neuron_refractory(uint n)
+{
+  g_ensemble.neuron_refractory[n] = g_ensemble.t_ref;
+}
 
 //! Decrement the refractory time for the given neuron
-static inline void decrement_neuron_refractory( uint n )
-  {g_ensemble.neuron_refractory[n]--;};
+static inline void decrement_neuron_refractory(uint n)
+{
+  g_ensemble.neuron_refractory[n]--;
+}
 
 #endif
 

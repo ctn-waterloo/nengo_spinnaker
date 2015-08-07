@@ -34,6 +34,10 @@ typedef struct pes_parameters_t
   
   // Offset into decoder to apply PES
   uint32_t decoder_output_offset;
+
+  // Index of the activity filter to extract input from
+  // -1 if this learning rule should use unfiltered activity
+  int32_t activity_filter_index;
 } pes_parameters_t;
 
 //----------------------------------
@@ -53,20 +57,20 @@ static inline void pes_neuron_spiked(uint n)
   // Loop through all the learning rules
   for(uint32_t l = 0; l < g_num_pes_learning_rules; l++)
   {
+    // If this learning rule operates on un-filtered activity and should, therefore be updated here
     const pes_parameters_t *parameters = &g_pes_learning_rules[l];
-    if(parameters->learning_rate > 0.0k)
+    if(parameters->activity_filter_index == -1)
     {
-      // Extract error signal vector from 
-      const filtered_input_buffer_t *filtered_input = g_input_modulatory.filters[parameters->error_signal_filter_index];
-      const value_t *filtered_error_signal = filtered_input->filtered;
-      
-      // Get filtered activity of this neuron and it's decoder vector
+      // Get the filter for the error signal
+      const if_filter_t *error_filter = &g_input_modulatory.filters[parameters->error_signal_filter_index];
+
+      // Get neuron's decoder vector
       value_t *decoder_vector = neuron_decoder_vector(n);
-      
+
       // Loop through output dimensions and apply PES to decoder values offset by output offset
-      for(uint d = 0; d < filtered_input->d_in; d++) 
+      for(uint d = 0; d < error_filter->size; d++)
       {
-        decoder_vector[d + parameters->decoder_output_offset] += (parameters->learning_rate * filtered_error_signal[d]);
+        decoder_vector[d + parameters->decoder_output_offset] -= (parameters->learning_rate * error_filter->output[d]);
       }
     }
   }
@@ -77,9 +81,12 @@ static inline void pes_neuron_spiked(uint n)
 //----------------------------------
 /**
 * \brief Copy in data controlling the PES learning 
-* rule to the PES region of the Ensemble.
+* rule from the PES region of the Ensemble.
 */
 bool get_pes(address_t address);
+
+
+void pes_step();
 
 /** @} */
 

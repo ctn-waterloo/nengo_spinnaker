@@ -8,8 +8,10 @@ from nengo.utils.builder import full_transform
 from nengo.utils import numpy as npext
 import numpy as np
 
-from .builder import BuiltConnection, InputPort, Model, ObjectPort, spec
-from .ports import EnsembleInputPort
+from .builder import (
+    BuiltConnection, InputPort, Model, OutputPort, ObjectPort, spec
+)
+from .ports import EnsembleInputPort, EnsembleOutputPort
 from .. import operators
 from ..utils import collections as collections_ext
 
@@ -18,6 +20,23 @@ BuiltEnsemble = collections.namedtuple(
                      "scaled_encoders, gain, bias"
 )
 """Parameters which describe an Ensemble."""
+
+
+@Model.source_getters.register(nengo.Ensemble)
+def get_ensemble_source(model, conn):
+    ens = model.object_operators[conn.pre_obj]
+
+    # If this connection has a learning rule
+    if conn.learning_rule is not None:
+        # If the rule modifies pre-synaptic
+        # state, source it from learnt output port
+        pre_modifies = conn.learning_rule.learning_rule_type.pre_modifies
+        if pre_modifies is not None:
+            return spec(ObjectPort(ens, EnsembleOutputPort.learnt))
+
+    # Otherwise, it's a standard connection that can
+    # be sourced from the standard output port
+    return spec(ObjectPort(ens, OutputPort.standard))
 
 
 @Model.source_getters.register(nengo.ensemble.Neurons)
@@ -29,27 +48,83 @@ def get_neurons_source(model, connection):
 
 
 @Model.sink_getters.register(nengo.Ensemble)
-def get_ensemble_sink(model, connection):
+def get_ensemble_sink(model, conn):
     """Get the sink for connections into an Ensemble."""
-    ens = model.object_operators[connection.post_obj]
+    ens = model.object_operators[conn.post_obj]
 
-    if (isinstance(connection.pre_obj, nengo.Node) and
-            not callable(connection.pre_obj.output) and
-            not isinstance(connection.pre_obj.output, Process) and
-            connection.pre_obj.output is not None):
+    if (isinstance(conn.pre_obj, nengo.Node) and
+            not callable(conn.pre_obj.output) and
+            not isinstance(conn.pre_obj.output, Process) and
+            conn.pre_obj.output is not None):
         # Connections from constant valued Nodes are optimised out.
         # Build the value that will be added to the direct input for the
         # ensemble.
-        val = connection.pre_obj.output[connection.pre_slice]
+        val = conn.pre_obj.output[conn.pre_slice]
 
-        if connection.function is not None:
-            val = connection.function(val)
+        if conn.function is not None:
+            val = conn.function(val)
 
-        transform = full_transform(connection, slice_pre=False)
+        transform = full_transform(conn, slice_pre=False)
         ens.direct_input += np.dot(transform, val)
     else:
+        # If this connection has a learning rule
+        if conn.learning_rule is not None:
+            # If the rule modifies post-synaptic
+            # state, sink it into learnt input port
+            post_modifies = conn.learning_rule.learning_rule_type.post_modifies
+            if post_modifies is not None:
+                return spec(ObjectPort(ens, EnsembleInputPort.learnt))
+
         # Otherwise we just sink into the Ensemble
         return spec(ObjectPort(ens, InputPort.standard))
+
+
+@Model.sink_getters.register(nengo.connection.LearningRule)
+def get_learning_rule_sink(model, connection):
+    # Get the sink learning rule and parent learnt connection
+    learning_rule = connection.post_obj
+    learnt_connection = learning_rule.connection
+
+    # Get the lists of state that the learning rules modify
+    pre_modifies = learning_rule.learning_rule_type.pre_modifies
+    post_modifies = learning_rule.learning_rule_type.post_modifies
+
+    # If learning rule is trying to modify both, complain
+    if pre_modifies is not None and post_modifies is not None:
+        raise NotImplementedError(
+            "SpiNNaker only supports learning rules which  "
+            "modify pre OR post synaptic ensembles - not both "
+        )
+    # If rule modifies pre-synaptic state
+    elif pre_modifies is not None:
+        # If rule modifies pre-synaptic ensemble and is connected to one
+        if ("Ensemble" in pre_modifies and
+                isinstance(learnt_connection.pre_obj, nengo.Ensemble)):
+
+            # Sink connection into unique port on pre-synaptic
+            # ensemble identified by learning rule object
+            ens = model.object_operators[learnt_connection.pre_obj]
+            return spec(ObjectPort(ens, learning_rule))
+        else:
+            raise NotImplementedError(
+                "SpiNNaker only supports learning rules "
+                "which modify pre-synaptic ensembles"
+            )
+    # Otherwise, if it modifies post-synaptic state
+    elif post_modifies is not None:
+        # If rule modifies post-synaptic ensemble and is connected to one
+        if ("Ensemble" in post_modifies and
+                isinstance(learnt_connection.post_obj, nengo.Ensemble)):
+
+            # Sink connection into unique port on post-synaptic
+            # ensemble identified by learning rule object
+            ens = model.object_operators[learnt_connection.post_obj]
+            return spec(ObjectPort(ens, learning_rule))
+        else:
+            raise NotImplementedError(
+                "SpiNNaker only supports learning rules "
+                "which modify post-synaptic ensembles"
+            )
 
 
 @Model.sink_getters.register(nengo.ensemble.Neurons)
@@ -226,3 +301,29 @@ def build_neurons_probe(model, probe):
                 probe.target.ensemble.neuron_type.__class__.__name__
             )
         )
+
+
+@Model.probe_builders.register(nengo.connection.LearningRule)
+def build_voja_probe(model, probe):
+    # Extract learning rule type
+    learning_rule_type = probe.target.learning_rule_type
+    learnt_connection = probe.target.connection
+
+    # If we're probing learnt encoders
+    if probe.attr == "scaled_encoders":
+        # If learning rule modifies post-synaptic state
+        if learning_rule_type.post_modifies is not None:
+            # If post-synaptic object is an ensemble, add probe
+            # to the bject operators lists of local probes
+            if isinstance(learnt_connection.post_obj, nengo.Ensemble):
+                ens = learnt_connection.post_obj
+                model.object_operators[ens].local_probes.append(probe)
+                return
+
+    raise NotImplementedError(
+        "SpiNNaker does not currently support probing '{}' on '{}' "
+        .format(
+            probe.attr,
+            learning_rule_type.__class__.__name__
+        )
+    )

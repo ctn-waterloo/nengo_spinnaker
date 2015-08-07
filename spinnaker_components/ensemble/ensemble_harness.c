@@ -14,21 +14,23 @@
 
 #include "ensemble.h"
 #include "ensemble_output.h"
-#include "ensemble_pes.h"
+#include "ensemble_profiler.h"
 
 /* Parameters and Buffers ***************************************************/
 ensemble_parameters_t g_ensemble;
-input_filter_t g_input;
-input_filter_t g_input_inhibitory;
-input_filter_t g_input_modulatory;
+if_collection_t g_input;
+if_collection_t g_input_inhibitory;
+if_collection_t g_input_modulatory;
+if_collection_t g_input_learnt_encoder;
 
 /* Multicast Wrapper ********************************************************/
 void mcpl_rx(uint key, uint payload) 
 {
   bool handled = false;
-  handled |= input_filter_mcpl_rx(&g_input, key, payload);
-  handled |= input_filter_mcpl_rx(&g_input_inhibitory, key, payload);
-  handled |= input_filter_mcpl_rx(&g_input_modulatory, key, payload);
+  handled |= input_filtering_input(&g_input, key, payload);
+  handled |= input_filtering_input(&g_input_inhibitory, key, payload);
+  handled |= input_filtering_input(&g_input_modulatory, key, payload);
+  handled |= input_filtering_input(&g_input_learnt_encoder, key, payload);
 
   if(!handled)
   {
@@ -43,15 +45,18 @@ bool initialise_ensemble(region_system_t *pars) {
   g_ensemble.machine_timestep = pars->machine_timestep;
   g_ensemble.t_ref = pars->t_ref;
   g_ensemble.exp_dt_over_t_rc = pars->exp_dt_over_t_rc;
-  g_ensemble.recd.record = pars->record_spikes;
+  g_ensemble.record_spikes.record = pars->record_spikes;
+  g_ensemble.record_learnt_encoders.record = pars->record_learnt_encoders;
   g_ensemble.n_inhib_dims = pars->n_inhibitory_dimensions;
+  g_ensemble.encoder_width = pars->encoder_width;
 
   io_printf(IO_BUF, "[Ensemble] INITIALISE_ENSEMBLE n_neurons = %d," \
-            "timestep = %d, t_ref = %d, exp_dt_over_t_rc = 0x%08x\n",
+            "timestep = %d, t_ref = %d, exp_dt_over_t_rc = 0x%08x, encoder_width = %u\n",
             g_ensemble.n_neurons,
             g_ensemble.machine_timestep,
             g_ensemble.t_ref,
-            g_ensemble.exp_dt_over_t_rc
+            g_ensemble.exp_dt_over_t_rc,
+            g_ensemble.encoder_width
   );
 
   // Holder for bias currents
@@ -64,14 +69,15 @@ bool initialise_ensemble(region_system_t *pars) {
   MALLOC_FAIL_FALSE(g_ensemble.neuron_refractory,
                     g_ensemble.n_neurons * sizeof(uint8_t));
 
-  for (uint n = 0; n < g_ensemble.n_neurons; n++) {
+  for (uint n = 0; n < g_ensemble.n_neurons; n++)
+  {
     g_ensemble.neuron_refractory[n] = 0;
     g_ensemble.neuron_voltage[n] = 0.0k;
   }
 
   // Initialise some buffers
   MALLOC_FAIL_FALSE(g_ensemble.encoders,
-                    g_ensemble.n_neurons * pars->n_input_dimensions *
+                    g_ensemble.n_neurons * g_ensemble.encoder_width *
                       sizeof(value_t));
 
   MALLOC_FAIL_FALSE(g_ensemble.decoders,
@@ -79,23 +85,26 @@ bool initialise_ensemble(region_system_t *pars) {
                       sizeof(value_t));
 
   // Setup subcomponents
-  g_ensemble.input = input_filter_initialise(&g_input, pars->n_input_dimensions);
-  if (g_ensemble.input == NULL)
-    return false;
+  input_filtering_initialise_output(&g_input, pars->n_input_dimensions);
+  g_ensemble.input = g_input.output;
 
-  io_printf(IO_BUF, "@\n");
-  if (pars->n_inhibitory_dimensions > 0) {
-    if (NULL == input_filter_initialise(
-          &g_input_inhibitory, pars->n_inhibitory_dimensions))
-      return false;
+  if (pars->n_inhibitory_dimensions > 0)
+  {
+    input_filtering_initialise_output(&g_input_inhibitory,
+                                      pars->n_inhibitory_dimensions);
   }
-  io_printf(IO_BUF, "@\n");
-  input_filter_initialise_no_accumulator(&g_input_modulatory);
-  io_printf(IO_BUF, "@\n");
+  input_filtering_initialise_output(&g_input_modulatory, 0);
+  input_filtering_initialise_output(&g_input_learnt_encoder, 0);
 
   g_ensemble.output = initialise_output(pars);
   if (g_ensemble.output == NULL && g_n_output_dimensions > 0)
+  {
     return false;
+  }
+
+  // Initialize the profiler with the number of
+  // Samples passed from the system region
+  profiler_init(pars->num_profiler_samples);
 
   // Register the update function
   spin1_callback_on(TIMER_TICK, ensemble_update, 2);

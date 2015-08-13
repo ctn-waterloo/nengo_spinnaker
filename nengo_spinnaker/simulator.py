@@ -82,6 +82,8 @@ class Simulator(object):
         self.model.decoder_cache.shrink()
         self.dt = self.model.dt
         self._closed = False  # Whether the simulator has been closed or not
+        self._running = False
+        self._halt = False
 
         self.host_sim = self._create_host_sim()
 
@@ -188,6 +190,7 @@ class Simulator(object):
             io_thread = self.io_controller.spawn()
 
             # Run the simulation
+            self._running = True
             try:
                 # Prep
                 exp_time = steps * (self.model.machine_timestep / float(1e6))
@@ -246,6 +249,9 @@ class Simulator(object):
                 raise ValueError("Cannot run an indefinite duration simulator "
                                  "for a fixed period of time.")
 
+            # Prepare the simulation
+            self.netlist.before_simulation(self, None)
+
             # Get a new thread for the IO
             io_thread = self.io_controller.spawn()
 
@@ -261,7 +267,7 @@ class Simulator(object):
                 self.controller.send_signal("cont")
 
             # Allow the local simulator to run
-            self._halt = True
+            self._halt = False
 
             # Run the simulation
             try:
@@ -334,6 +340,8 @@ class Simulator(object):
         """Clean the SpiNNaker board and prevent further simulation."""
         # Stop the application
         self._closed = True
+        if not self._halt:
+            self.stop()
         self.io_controller.close()
         self.controller.send_signal("stop")
 

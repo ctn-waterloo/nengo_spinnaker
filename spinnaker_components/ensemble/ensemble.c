@@ -249,7 +249,9 @@ static inline void decode_output_and_transmit(const ensemble_state_t *ensemble)
   uint32_t *keys = ensemble->keys;
   uint32_t *spike_vector = ensemble->spikes;
 
-  // TODO Apply decoder learning rules
+  // Apply any PES learning rule to decoders
+  pes_apply(n_populations, n_neurons_total, pop_lengths, decoder,
+            spike_vector, &modulatory_filters);
 
   // Apply the decoder and transmit multicast packets.
   // Each decoder row is applied in turn to get the output value, which is then
@@ -262,8 +264,6 @@ static inline void decode_output_and_transmit(const ensemble_state_t *ensemble)
     // Compute the decoded value
     value_t output = decode_spike_train(n_populations, pop_lengths,
                                         row, spike_vector);
-
-    //pes_neuron_spiked(d, &modulatory_filters);
 
     // Transmit this value (keep trying until it sends)
     while(!spin1_send_mc_packet(keys[d], bitsk(output), WITH_PAYLOAD))

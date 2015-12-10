@@ -17,11 +17,35 @@
 
 #include <string.h>
 
+//----------------------------------
+// Structs
+//----------------------------------
+// Structure containing parameters and state required for PES learning
+typedef struct pes_parameters_t
+{
+  // Scalar learning rate used in PES decoder delta calculation
+  value_t learning_rate;
+
+  // Index of the modulatory input signal filter that contains error signal
+  uint32_t error_sig_index;
+
+  // Start and end dimensions of the error signal to use in this vertex
+  uint32_t error_start_dim;
+  uint32_t error_end_dim;
+
+  // Which row decoder to apply PES learning from
+  uint32_t decoder_row;
+
+  // Index of the activity filter to extract input from
+  // -1 if this learning rule should use unfiltered activity
+  int32_t activity_filter_index;
+} pes_parameters_t;
+
 //-----------------------------------------------------------------------------
 // Global variables
 //-----------------------------------------------------------------------------
-uint32_t g_num_pes_learning_rules = 0;
-pes_parameters_t *g_pes_learning_rules = NULL;
+static uint32_t g_num_pes_learning_rules = 0;
+static pes_parameters_t *g_pes_learning_rules = NULL;
 
 //-----------------------------------------------------------------------------
 // Global functions
@@ -79,7 +103,9 @@ void pes_apply(uint32_t n_populations, uint32_t n_neurons_total,
 
               // Loop through output dimensions and apply PES learning
               value_t *neuron_decoder = &rule_decoder[decoder_col];
-              for(uint d = 0; d < error_sig->size; d++, neuron_decoder += n_neurons_total)
+              for(uint d = params->error_start_dim;
+                  d < params->error_end_dim;
+                  d++, neuron_decoder += n_neurons_total)
               {
                 *neuron_decoder -= (params->learning_rate * error_val[d]);
               }
@@ -125,8 +151,12 @@ bool pes_initialise(address_t address)
     for(uint32_t l = 0; l < g_num_pes_learning_rules; l++)
     {
       const pes_parameters_t *parameters = &g_pes_learning_rules[l];
-      io_printf(IO_BUF, "\tRule %u, Learning rate:%k, Error signal index:%u, Decoder row:%u, Activity filter index:%d\n",
-               l, parameters->learning_rate, parameters->error_sig_index, parameters->decoder_row, parameters->activity_filter_index);
+      io_printf(IO_BUF, "\tRule %u, Learning rate:%k, Error signal index:%u, "
+                "Error signal start dimension:%u, Error signal end dimensions:%u,"
+                "Decoder row:%u, Activity filter index:%d\n",
+                l, parameters->learning_rate, parameters->error_sig_index,
+                parameters->error_start_dim, parameters->error_end_dim,
+                parameters->decoder_row, parameters->activity_filter_index);
     }
   }
   return true;

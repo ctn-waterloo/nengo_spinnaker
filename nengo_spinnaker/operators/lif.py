@@ -151,11 +151,11 @@ class EnsembleLIF(object):
                 if l_rule in incoming_modulatory:
                     e = incoming_modulatory[l_rule]
 
-                    # Cache the index of the input filter containing
-                    # the error signal and the offset into the decoder
-                    # where the learning rule should operate
+                    # Cache the index of the input filter containing the
+                    # error signal and the starting offset into the learnt
+                    # decoder where the learning rule should operate
                     error_filter_index = len(mod_filters)
-                    decoder_offset = learnt_decoders.shape[0]
+                    decoder_start = learnt_decoders.shape[0]
 
                     # Get new decoders and output keys for learnt connection
                     rule_decoders, rule_output_keys = \
@@ -163,14 +163,14 @@ class EnsembleLIF(object):
 
                     # If there are no existing decodes, hstacking doesn't
                     # work so set decoders to new learnt decoder matrix
-                    if decoder_offset == 0:
+                    if decoder_start == 0:
                         learnt_decoders = rule_decoders
                     # Otherwise, stack learnt decoders
                     # alongside existing matrix
                     else:
-                        print "before:", learnt_decoders.shape, rule_decoders.shape
                         learnt_decoders = np.vstack((learnt_decoders, rule_decoders))
-                    print "after:", learnt_decoders.shape
+
+                    decoder_stop = learnt_decoders.shape[0]
 
                     # Also add output keys to list
                     learnt_output_keys.extend(rule_output_keys)
@@ -194,7 +194,8 @@ class EnsembleLIF(object):
                         PESLearningRule(
                             learning_rate=l_rule_type.learning_rate / model.dt,
                             error_filter_index=error_filter_index,
-                            decoder_offset=decoder_offset,
+                            decoder_start=decoder_start,
+                            decoder_stop=decoder_stop,
                             activity_filter_index=activity_filter_index))
                 # Otherwise raise an error - PES requires a modulatory signal
                 else:
@@ -953,7 +954,8 @@ class LIFRegion(regions.Region):
 
 PESLearningRule = collections.namedtuple(
     "PESLearningRule",
-    "learning_rate, error_filter_index, decoder_offset, activity_filter_index")
+    "learning_rate, error_filter_index, decoder_start, decoder_stop, "
+    "activity_filter_index")
 
 
 class PESRegion(regions.Region):
@@ -964,26 +966,47 @@ class PESRegion(regions.Region):
         self.n_neurons = n_neurons
 
     def sizeof(self, *args):
-        return 4 + (len(self.learning_rules) * 16)
+        return 4 + (len(self.learning_rules) * 24)
 
     def write_subregion_to_file(self, fp, output_slice, learnt_output_slice):
+        # Get number of static decoder rows - used to offset
+        # all PES decoder offsets into global decoder array
         n_decoder_rows = output_slice.stop - output_slice.start
-        print "PES REGION %s,%s" % (output_slice, learnt_output_slice)
-        # Write number of learning rules
-        fp.write(struct.pack("<I", len(self.learning_rules)))
 
-        # Write learning rules
-        # **TODO** need to filter learning rules by whether decoder offset
-        # occurs within learnt_output_slice AND pass dimensions
-        for l in self.learning_rules:
-            data = struct.pack(
-                "<3Ii",
+        # Filter learning rules that learn decoders within learnt output slice
+        sliced_learning_rules = [l for l in self.learning_rules
+            if (l.decoder_start < learnt_output_slice.stop
+                and l.decoder_stop > learnt_output_slice.start)]
+        # Write number of learning rules for slice
+        fp.write(struct.pack("<I", len(sliced_learning_rules)))
+
+        # Loop through sliced learning rules
+        for l in sliced_learning_rules:
+            # Error signal starts either at 1st dimension or the first
+            # dimension of decoder that occurs within learnt output slice
+            error_start_dim = max(0,
+                                  learnt_output_slice.start - l.decoder_start)
+
+            # Error signal end either at last dimension or
+            # the last dimension of learnt output slice
+            error_end_dim = min(l.decoder_stop - l.decoder_start,
+                                learnt_output_slice.stop - l.decoder_start)
+
+            # The row of the global decoder is the learnt row relative to the
+            # start of the learnt output slice with the number of static
+            # decoder rows added to put it into combined decoder space
+            decoder_row = n_decoder_rows +\
+                max(0, l.decoder_start - learnt_output_slice.start)
+
+            # Write structure
+            fp.write(struct.pack(
+                "<i4Ii",
                 tp.value_to_fix(l.learning_rate / float(self.n_neurons)),
                 l.error_filter_index,
-                n_decoder_rows + l.decoder_offset,
-                l.activity_filter_index
-            )
-            fp.write(data)
+                error_start_dim,
+                error_end_dim,
+                decoder_row,
+                l.activity_filter_index))
 
 VojaLearningRule = collections.namedtuple(
     "VojaLearningRule",

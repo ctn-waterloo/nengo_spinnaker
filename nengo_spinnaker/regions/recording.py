@@ -106,10 +106,12 @@ class EncoderRecordingRegion(RecordingRegion):
         n_neurons = vertex_slice.stop - vertex_slice.start
         framelength = self.bytes_per_frame(n_neurons)
 
-        # Read in neuron slice of fixed point
-        # values and convert to float
-        fp = mem.read(n_steps * framelength)
-        slice_encoders = NumpyFixToFloatConverter(15)(fp)
+        # Read in neuron slice of fixed point values
+        data = mem.read(n_steps * framelength)
+        data = np.fromstring(data, dtype=np.int32)
+
+        # Convert the data into the correct format
+        slice_encoders = NumpyFixToFloatConverter(15)(data)
 
         # Reshape and return
         slice_encoders = np.reshape(
@@ -117,7 +119,7 @@ class EncoderRecordingRegion(RecordingRegion):
             (
                 n_steps,
                 n_neurons,
-                self.encoder_recording_region.n_dimensions
+                self.n_dimensions
             )
         )
         return slice_encoders

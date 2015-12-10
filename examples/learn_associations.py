@@ -10,6 +10,7 @@ d_key = 2
 d_value = 4
 
 spinnaker = True
+record_encoders = True
 
 rng = np.random.RandomState(seed=7)
 keys = nengo.dists.UniformHypersphere(surface=True).sample(num_items, d_key, rng=rng)
@@ -73,7 +74,9 @@ with model:
     p_learning = nengo.Probe(learning, synapse=None)
     p_error = nengo.Probe(error, synapse=0.005)
     p_recall = nengo.Probe(recall, synapse=None)
-    #p_encoders = nengo.Probe(conn_in.learning_rule, 'scaled_encoders')
+
+    if record_encoders:
+        p_encoders = nengo.Probe(conn_in.learning_rule, 'scaled_encoders')
 
 if spinnaker:
     sim = nengo_spinnaker.Simulator(model)
@@ -105,8 +108,7 @@ axes[3].plot(t[train], sim.data[p_error][train])
 test = ~train
 axes[3].plot(t[test], sim.data[p_recall][test] - sim.data[p_values][test])
 
-'''
-scale = (sim.model.params[memory].gain / memory.radius)[:, np.newaxis]
+
 
 def plot_2d(text, xy):
     plt.figure()
@@ -118,7 +120,10 @@ def plot_2d(text, xy):
     plt.legend()
     plt.axes().set_aspect('equal')
 
-plot_2d("Before", sim.data[p_encoders][0].copy() / scale)
-plot_2d("After", sim.data[p_encoders][-1].copy() / scale)
-'''
+if record_encoders:
+    scale = (sim.model.params[memory].gain / memory.radius)[:, np.newaxis]
+
+    plot_2d("Before", sim.data[p_encoders][0].copy() / scale)
+    plot_2d("After", sim.data[p_encoders][-1].copy() / scale)
+
 plt.show()

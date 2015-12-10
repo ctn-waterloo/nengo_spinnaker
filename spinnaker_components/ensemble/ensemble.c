@@ -241,10 +241,12 @@ static inline void decode_output_and_transmit(const ensemble_state_t *ensemble)
   profiler_write_entry(PROFILER_ENTER | PROFILER_DECODE);
 
   // Extract parameters
-  uint32_t n_neurons_total = ensemble->parameters.n_neurons_total;
-  uint32_t n_populations = ensemble->parameters.n_populations;
+  const ensemble_parameters_t *params = &ensemble->parameters;
+  uint32_t n_neurons_total = params->n_neurons_total;
+  uint32_t n_populations = params->n_populations;
+  uint32_t n_decoder_rows = params->n_decoder_rows + params->n_learnt_decoder_rows;
+
   uint32_t *pop_lengths = ensemble->population_lengths;
-  uint32_t n_decoder_rows = ensemble->parameters.n_decoder_rows;
   value_t *decoder = ensemble->decoders;
   uint32_t *keys = ensemble->keys;
   uint32_t *spike_vector = ensemble->spikes;
@@ -447,22 +449,23 @@ void c_main(void)
 
   // --------------------------------------------------------------------------
   // Copy in the ensemble parameters
-  spin1_memcpy(&ensemble.parameters, region_start(ENSEMBLE_REGION, address),
+  ensemble_parameters_t *params = &ensemble.parameters;
+  spin1_memcpy(params, region_start(ENSEMBLE_REGION, address),
                sizeof(ensemble_parameters_t));
 
   // Prepare the input vector
-  MALLOC_OR_DIE(ensemble.input, sizeof(value_t) * ensemble.parameters.n_dims);
+  MALLOC_OR_DIE(ensemble.input, sizeof(value_t) * params->n_dims);
 
   // Store an offset into the input vector
   ensemble.input_local =
-    &ensemble.input[ensemble.parameters.input_subspace.offset];
-  sdram_input_vector_local = &ensemble.parameters.sdram_input_vector[
-    ensemble.parameters.input_subspace.offset
+    &ensemble.input[params->input_subspace.offset];
+  sdram_input_vector_local = &params->sdram_input_vector[
+    params->input_subspace.offset
   ];
 
   // Compute the spike size for writing into SDRAM
-  spikes_write_size = ensemble.parameters.n_neurons / 32;
-  if (ensemble.parameters.n_neurons % 32)
+  spikes_write_size = params->n_neurons / 32;
+  if (params->n_neurons % 32)
   {
     spikes_write_size++;
   }
@@ -473,7 +476,7 @@ void c_main(void)
                               region_start(INPUT_FILTERS_REGION, address));
   input_filtering_get_routes(&input_filters,
                              region_start(INPUT_ROUTING_REGION, address));
-  input_filters.output_size = ensemble.parameters.input_subspace.n_dims;
+  input_filters.output_size = params->input_subspace.n_dims;
   input_filters.output = ensemble.input_local;
 
   input_filtering_get_filters(&inhibition_filters,
@@ -493,24 +496,24 @@ void c_main(void)
   input_filtering_get_routes(&learnt_encoder_filters,
                              region_start(LEARNT_ENCODER_ROUTING_REGION, address));
   // Copy in encoders
-  uint encoder_size = sizeof(value_t) * ensemble.parameters.n_neurons *
-                      ensemble.parameters.n_dims;
+  uint encoder_size = sizeof(value_t) * params->n_neurons *
+                      params->n_dims;
   MALLOC_OR_DIE(ensemble.encoders, encoder_size);
   spin1_memcpy(ensemble.encoders, region_start(ENCODER_REGION, address),
                encoder_size);
 
   // Copy in bias
-  uint bias_size = sizeof(value_t) * ensemble.parameters.n_neurons;
+  uint bias_size = sizeof(value_t) * params->n_neurons;
   MALLOC_OR_DIE(ensemble.bias, bias_size);
   spin1_memcpy(ensemble.bias, region_start(BIAS_REGION, address), bias_size);
 
   // Copy in gain
-  uint gain_size = sizeof(value_t) * ensemble.parameters.n_neurons;
+  uint gain_size = sizeof(value_t) * params->n_neurons;
   MALLOC_OR_DIE(ensemble.gain, gain_size);
   spin1_memcpy(ensemble.gain, region_start(GAIN_REGION, address), gain_size);
 
   // Copy in the population lengths
-  uint poplength_size = sizeof(uint32_t) * ensemble.parameters.n_populations;
+  uint poplength_size = sizeof(uint32_t) * params->n_populations;
   MALLOC_OR_DIE(ensemble.population_lengths, poplength_size);
   spin1_memcpy(ensemble.population_lengths,
                region_start(POPULATION_LENGTH_REGION, address),
@@ -518,13 +521,13 @@ void c_main(void)
 
   // Prepare the spike vectors
   uint32_t padded_spike_vector_size = 0;
-  for (uint p = 0; p < ensemble.parameters.n_populations; p++)
+  for (uint p = 0; p < params->n_populations; p++)
   {
     // If this is the population we represent then store the offset
-    if (p == ensemble.parameters.population_id)
+    if (p == params->population_id)
     {
       sdram_spikes_vector_local =
-        &ensemble.parameters.sdram_spike_vector[padded_spike_vector_size];
+        &params->sdram_spike_vector[padded_spike_vector_size];
     }
 
     // Include this population
@@ -539,17 +542,34 @@ void c_main(void)
   padded_spike_vector_size *= sizeof(uint32_t);
   MALLOC_OR_DIE(ensemble.spikes, padded_spike_vector_size);
 
-  // Copy in decoders
-  uint32_t decoder_size = sizeof(value_t) * ensemble.parameters.n_neurons_total
-                          * ensemble.parameters.n_decoder_rows;
-  MALLOC_OR_DIE(ensemble.decoders, decoder_size);
-  spin1_memcpy(ensemble.decoders, region_start(DECODER_REGION, address),
-               decoder_size);
+  // Allocate array large enough for static and learnt decoders
+  const uint32_t decoder_words = params->n_neurons_total * params->n_decoder_rows;
+  const uint32_t learnt_decoder_words = params->n_neurons_total * params->n_learnt_decoder_rows;
+  MALLOC_OR_DIE(ensemble.decoders,
+                (decoder_words + learnt_decoder_words) * sizeof(value_t));
 
-  // Copy in output keys
-  uint32_t keys_size = sizeof(uint32_t) * ensemble.parameters.n_decoder_rows;
-  MALLOC_OR_DIE(ensemble.keys, keys_size);
-  spin1_memcpy(ensemble.keys, region_start(KEYS_REGION, address), keys_size);
+  // Copy static decoders into beginning of this array
+  spin1_memcpy(ensemble.decoders, region_start(DECODER_REGION, address),
+               decoder_words * sizeof(value_t));
+
+  // Follow this by learnt decoders
+  spin1_memcpy(ensemble.decoders + decoder_words,
+               region_start(LEARNT_DECODER_REGION, address),
+               learnt_decoder_words * sizeof(value_t));
+
+  // Allocate array large enough for static and learnt keys
+  MALLOC_OR_DIE(ensemble.keys,
+                sizeof(uint32_t) * (params->n_decoder_rows + params->n_learnt_decoder_rows));
+
+  // Copy static keys into beginning of this array
+  spin1_memcpy(ensemble.keys,
+               region_start(KEYS_REGION, address),
+               params->n_decoder_rows * sizeof(uint32_t));
+
+  // Follow this by learnt keys
+  spin1_memcpy(ensemble.keys + params->n_decoder_rows,
+               region_start(LEARNT_KEYS_REGION, address),
+               params->n_learnt_decoder_rows * sizeof(uint32_t));
 
   // Prepare the neuron state
   lif_prepare_state(&ensemble, region_start(NEURON_REGION, address));

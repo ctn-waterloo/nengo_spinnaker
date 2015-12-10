@@ -15,23 +15,25 @@
 #define BIAS_REGION                   4
 #define GAIN_REGION                   5
 #define DECODER_REGION                6
-#define KEYS_REGION                   7
-#define POPULATION_LENGTH_REGION      8
-#define INPUT_FILTERS_REGION          9
-#define INPUT_ROUTING_REGION          10
-#define INHIB_FILTERS_REGION          11
-#define INHIB_ROUTING_REGION          12
-#define MODULATORY_FILTERS_REGION     13
-#define MODULATORY_ROUTING_REGION     14
-#define LEARNT_ENCODER_FILTERS_REGION 15
-#define LEARNT_ENCODER_ROUTING_REGION 16
-#define PES_REGION                    17
-#define VOJA_REGION                   18
-#define FILTERED_ACTIVITY_REGION      19
-#define PROFILER_REGION               20
-#define REC_SPIKES_REGION             21
-#define REC_VOLTAGES_REGION           22
-#define REC_ENCODERS_REGION           23
+#define LEARNT_DECODER_REGION         7
+#define KEYS_REGION                   8
+#define LEARNT_KEYS_REGION            9
+#define POPULATION_LENGTH_REGION      10
+#define INPUT_FILTERS_REGION          11
+#define INPUT_ROUTING_REGION          12
+#define INHIB_FILTERS_REGION          13
+#define INHIB_ROUTING_REGION          14
+#define MODULATORY_FILTERS_REGION     15
+#define MODULATORY_ROUTING_REGION     16
+#define LEARNT_ENCODER_FILTERS_REGION 17
+#define LEARNT_ENCODER_ROUTING_REGION 18
+#define PES_REGION                    19
+#define VOJA_REGION                   20
+#define FILTERED_ACTIVITY_REGION      21
+#define PROFILER_REGION               22
+#define REC_SPIKES_REGION             23
+#define REC_VOLTAGES_REGION           24
+#define REC_ENCODERS_REGION           25
 /*****************************************************************************/
 
 /*****************************************************************************/
@@ -72,8 +74,8 @@ typedef struct _ensemble_parameters
     uint32_t n_dims;          // Number of dimensions
   } input_subspace;           // Parameters for the input subspace
 
-  uint32_t n_decoder_rows;    // Number of output dimensions
-
+  uint32_t n_decoder_rows;        // Number of output dimensions
+  uint32_t n_learnt_decoder_rows; // Number of learnt output dimensions
   uint32_t n_profiler_samples;    // Number of profiler samples
   uint32_t flags;                 // Flags as per `flags` enum
 

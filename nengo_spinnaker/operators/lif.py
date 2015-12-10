@@ -40,9 +40,9 @@ class Regions(enum.IntEnum):
     bias = 4  # Biases
     gain = 5  # Gains
     decoders = 6  # Decoder matrix (for all neurons, only some rows)
-    learnt_decoders = 7 # Learnt decoder matrix (for all neurons, all rows)
+    learnt_decoders = 7  # Learnt decoder matrix (for all neurons, all rows)
     keys = 8  # Output keys
-    learnt_keys = 9 # Learnt output keys
+    learnt_keys = 9  # Learnt output keys
     population_length = 10  # Information about the entire cluster
     input_filters = 11
     input_routing = 12
@@ -168,7 +168,8 @@ class EnsembleLIF(object):
                     # Otherwise, stack learnt decoders
                     # alongside existing matrix
                     else:
-                        learnt_decoders = np.vstack((learnt_decoders, rule_decoders))
+                        learnt_decoders = np.vstack(
+                            (learnt_decoders, rule_decoders))
 
                     decoder_stop = learnt_decoders.shape[0]
 
@@ -182,7 +183,7 @@ class EnsembleLIF(object):
 
                     # Either add a new filter to the filtered activity
                     # region or get the index of the existing one
-                    #activity_filter_index = \
+                    # activity_filter_index = \
                     #    ens_regions[Regions.filtered_activity].add_get_filter(
                     #        l_rule_type.pre_tau)
                     activity_filter_index = -1
@@ -271,7 +272,7 @@ class EnsembleLIF(object):
 
                 # Either add a new filter to the filtered activity
                 # region or get the index of the existing one
-                #activity_filter_index = \
+                # activity_filter_index = \
                 #    ens_regions[Regions.filtered_activity].add_get_filter(
                 #        l_rule_type.post_tau)
                 activity_filter_index = -1
@@ -613,10 +614,10 @@ class EnsembleCluster(object):
 
         # Zip these together to create the vertices
         all_slices = zip(input_slices, output_slices, learnt_output_slices)
-        for i, (in_slice, out_slice, learnt_out_slice) in enumerate(all_slices):
+        for i, (inp, output, learnt) in enumerate(all_slices):
             # Create the vertex
-            vertex = EnsembleSlice(i, self.neuron_slices, in_slice,
-                                   out_slice, learnt_out_slice, self.regions)
+            vertex = EnsembleSlice(i, self.neuron_slices, inp, output, learnt,
+                                   self.regions)
 
             # Add to the list of vertices
             self.vertices.append(vertex)
@@ -974,7 +975,8 @@ class PESRegion(regions.Region):
         n_decoder_rows = output_slice.stop - output_slice.start
 
         # Filter learning rules that learn decoders within learnt output slice
-        sliced_learning_rules = [l for l in self.learning_rules
+        sliced_learning_rules = [
+            l for l in self.learning_rules
             if (l.decoder_start < learnt_output_slice.stop
                 and l.decoder_stop > learnt_output_slice.start)]
         # Write number of learning rules for slice

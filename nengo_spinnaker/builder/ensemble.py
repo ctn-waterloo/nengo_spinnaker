@@ -22,7 +22,6 @@ BuiltEnsemble = collections.namedtuple(
 """Parameters which describe an Ensemble."""
 
 
-
 @Model.source_getters.register(nengo.Ensemble)
 def get_ensemble_source(model, conn):
     ens = model.object_operators[conn.pre_obj]
@@ -231,7 +230,8 @@ def build_from_ensemble_connection(model, conn):
             np.all(transform[0, :] == transform[1:, :])):
         transform = np.array([transform[0]])
 
-    return EnsembleTransmissionParameters(decoders, transform, conn.learning_rule)
+    return EnsembleTransmissionParameters(decoders, transform,
+                                          conn.learning_rule)
 
 
 @Model.transmission_parameter_builders.register(nengo.ensemble.Neurons)

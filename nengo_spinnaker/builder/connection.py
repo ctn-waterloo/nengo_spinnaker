@@ -28,6 +28,7 @@ def build_generic_reception_params(model, conn):
     return ReceptionParameters(conn.synapse, conn.post_obj.size_in,
                                conn.learning_rule)
 
+
 class EnsembleTransmissionParameters(object):
     """Transmission parameters for a connection originating at an Ensemble.
 

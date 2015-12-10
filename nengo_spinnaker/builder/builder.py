@@ -8,6 +8,7 @@ import numpy as np
 from six import itervalues
 
 from . import model
+from nengo_spinnaker import operators
 from nengo_spinnaker.netlist import Net, Netlist
 from nengo_spinnaker.utils import collections as collections_ext
 from nengo_spinnaker.utils.keyspaces import KeyspaceContainer
@@ -311,6 +312,10 @@ class Model(object):
             A netlist which can be placed and routed to simulate this model on
             a SpiNNaker machine.
         """
+        # Remove any passthrough Nodes which don't connect to anything
+        removed_operators = model.remove_sinkless_objects(self.connection_map,
+                                                          operators.Filter)
+
         # Apply the default keyspace to any signals without keyspaces
         self.connection_map.add_default_keyspace(self.keyspaces["nengo"])
 
@@ -323,6 +328,12 @@ class Model(object):
 
         for op in itertools.chain(itervalues(self.object_operators),
                                   self.extra_operators):
+            # Skip any operators that were previously removed
+            if op in removed_operators:
+                continue
+
+            # Otherwise call upon the operator to build vertices for the
+            # netlist.
             vxs, load_fn, pre_fn, post_fn = op.make_vertices(
                 self, *args, **kwargs
             )
@@ -388,19 +399,6 @@ class Model(object):
             load_functions=load_functions,
             before_simulation_functions=before_simulation_functions,
             after_simulation_functions=after_simulation_functions
-        )
-
-
-class netlistspec(collections.namedtuple(
-        "netlistspec", "vertices, load_function, before_simulation_function, "
-                       "after_simulation_function")):
-    """Specification of how an operator should be added to a netlist."""
-    def __new__(cls, vertices, load_function=None,
-                before_simulation_function=None,
-                after_simulation_function=None):
-        return super(netlistspec, cls).__new__(
-            cls, vertices, load_function, before_simulation_function,
-            after_simulation_function
         )
 
 

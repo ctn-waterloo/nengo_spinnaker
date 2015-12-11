@@ -63,6 +63,7 @@ typedef struct _ensemble_parameters
   uint32_t machine_timestep;  // Length of timestep (in microseconds)
   uint32_t n_neurons;         // Number of neurons in this portion
   uint32_t n_dims;            // Number of dimensions represented
+  uint32_t encoder_width;     // Total width of encoder
 
   uint32_t n_neurons_total;   // Number of neurons overall
   uint32_t n_populations;     // Number of populations overall

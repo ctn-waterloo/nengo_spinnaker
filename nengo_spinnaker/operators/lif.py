@@ -336,8 +336,9 @@ class EnsembleLIF(object):
         ens_regions[Regions.population_length] = regions.ListRegion("I")
 
         # The ensemble region contains basic information about the ensemble
-        ens_regions[Regions.ensemble] = EnsembleRegion(model.machine_timestep,
-                                                       self.ensemble.size_in)
+        ens_regions[Regions.ensemble] = EnsembleRegion(
+            model.machine_timestep, self.ensemble.size_in,
+            encoders_with_gain.shape[1])
 
         # The neuron region contains information specific to the neuron type
         ens_regions[Regions.neuron] = LIFRegion(
@@ -834,19 +835,19 @@ class EnsembleRegion(regions.Region):
 
     Python representation of `ensemble_parameters_t`.
     """
-    def __init__(self, machine_timestep, size_in, n_profiler_samples=0,
-                 record_spikes=False, record_voltages=False,
-                 record_encoders=False):
+    def __init__(self, machine_timestep, size_in, encoder_width,
+                 n_profiler_samples=0, record_spikes=False,
+                 record_voltages=False, record_encoders=False):
         self.machine_timestep = machine_timestep
         self.size_in = size_in
+        self.encoder_width = encoder_width
         self.n_profiler_samples = n_profiler_samples
         self.record_spikes = record_spikes
         self.record_voltages = record_voltages
         self.record_encoders = record_encoders
 
     def sizeof(self, *args, **kwargs):
-        # Always 15 words
-        return 15*4
+        return 17 * 4
 
     def write_subregion_to_file(self, fp, n_populations, population_id,
                                 n_neurons_in_population, input_slice,
@@ -900,10 +901,11 @@ class EnsembleRegion(regions.Region):
 
         # Pack and write the data
         fp.write(struct.pack(
-            "<16I",
+            "<17I",
             self.machine_timestep,
             n_neurons,
             self.size_in,
+            self.encoder_width,
             n_neurons_in_population,
             n_populations,
             population_id,

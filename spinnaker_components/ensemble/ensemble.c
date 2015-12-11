@@ -64,6 +64,7 @@ void simulate_neurons(
   value_t *input = ensemble->input;
   value_t inhib_input = ensemble->inhibitory_input;
   uint32_t n_dims = ensemble->parameters.n_dims;
+  uint32_t encoder_width = ensemble->parameters.encoder_width;
 
   // Bit to use to indicate that a neuron spiked
   uint32_t bit = (1 << 31);
@@ -75,7 +76,7 @@ void simulate_neurons(
   for (uint32_t n = 0; n < ensemble->parameters.n_neurons; n++)
   {
     // Get this neuron's encoder vector
-    value_t *encoder_vector = &ensemble->encoders[n_dims * n];
+    value_t *encoder_vector = &ensemble->encoders[encoder_width * n];
 
     // Is this neuron in its refractory period
     bool in_refractory_period = neuron_refractory(n, ensemble->state);
@@ -497,7 +498,7 @@ void c_main(void)
                              region_start(LEARNT_ENCODER_ROUTING_REGION, address));
   // Copy in encoders
   uint encoder_size = sizeof(value_t) * params->n_neurons *
-                      params->n_dims;
+                      params->encoder_width;
   MALLOC_OR_DIE(ensemble.encoders, encoder_size);
   spin1_memcpy(ensemble.encoders, region_start(ENCODER_REGION, address),
                encoder_size);

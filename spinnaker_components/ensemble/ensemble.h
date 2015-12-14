@@ -41,7 +41,7 @@
 #define PROFILER_INPUT_FILTER     0
 #define PROFILER_NEURON_UPDATE    1
 #define PROFILER_DECODE           2
-#define PROFILE_PES               3
+#define PROFILER_PES              3
 /*****************************************************************************/
 
 /*****************************************************************************/

@@ -252,10 +252,6 @@ static inline void decode_output_and_transmit(const ensemble_state_t *ensemble)
   uint32_t *keys = ensemble->keys;
   uint32_t *spike_vector = ensemble->spikes;
 
-  // Apply any PES learning rule to decoders
-  pes_apply(n_populations, n_neurons_total, pop_lengths, decoder,
-            spike_vector, &modulatory_filters);
-
   // Apply the decoder and transmit multicast packets.
   // Each decoder row is applied in turn to get the output value, which is then
   // transmitted.
@@ -367,6 +363,9 @@ void dma_complete(uint transfer_id, uint tag)
   }
   else if (tag == READ_SPIKE_VECTOR)
   {
+    // Apply PES learning to spike vector
+    pes_apply(&ensemble, &modulatory_filters);
+
     // Decode and transmit neuron output
     decode_output_and_transmit(&ensemble);
   }
@@ -435,6 +434,9 @@ void timer_tick(uint ticks, uint arg1)
     // shared SDRAM vector.
     simulate_neurons(&ensemble, ensemble.spikes);
 
+    // Apply PES learning to spike vector
+    pes_apply(&ensemble, &modulatory_filters);
+    
     // Decode and transmit output
     decode_output_and_transmit(&ensemble);
   }

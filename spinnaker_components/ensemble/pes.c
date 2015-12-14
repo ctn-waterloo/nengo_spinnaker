@@ -50,10 +50,18 @@ static pes_parameters_t *g_pes_learning_rules = NULL;
 //-----------------------------------------------------------------------------
 // Global functions
 //-----------------------------------------------------------------------------
-void pes_apply(uint32_t n_populations, uint32_t n_neurons_total,
-               const uint32_t *population_lengths, value_t *decoder,
-               const uint32_t *spikes, const if_collection_t *modulatory_filters)
+void pes_apply(const ensemble_state_t *ensemble, const if_collection_t *modulatory_filters)
 {
+  profiler_write_entry(PROFILER_ENTER | PROFILER_PES);
+
+  // Extract parameters
+  const ensemble_parameters_t *params = &ensemble->parameters;
+  uint32_t n_neurons_total = params->n_neurons_total;
+  uint32_t n_populations = params->n_populations;
+  const uint32_t *pop_lengths = ensemble->population_lengths;
+  value_t *decoder = ensemble->decoders;
+  const uint32_t *spike_vector = ensemble->spikes;
+
   // Loop through all the learning rules
   for(uint32_t l = 0; l < g_num_pes_learning_rules; l++)
   {
@@ -73,7 +81,7 @@ void pes_apply(uint32_t n_populations, uint32_t n_neurons_total,
       for (uint32_t p = 0; p < n_populations; p++)
       {
         // Get the number of neurons in this population
-        uint32_t pop_length = population_lengths[p];
+        uint32_t pop_length = pop_lengths[p];
 
         // While we have neurons left to process
         while (pop_length)
@@ -82,7 +90,7 @@ void pes_apply(uint32_t n_populations, uint32_t n_neurons_total,
           uint32_t n = (pop_length > 32) ? 32 : pop_length;
 
           // Load the next word of the spike vector
-          uint32_t data = *(spikes++);
+          uint32_t data = *(spike_vector++);
 
           // Include the contribution from each neuron
           while (n)  // While there are still neurons left
@@ -129,6 +137,8 @@ void pes_apply(uint32_t n_populations, uint32_t n_neurons_total,
       }
     }
   }
+
+  profiler_write_entry(PROFILER_EXIT | PROFILER_PES);
 }
 //-----------------------------------------------------------------------------
 bool pes_initialise(address_t address)

@@ -23,18 +23,13 @@
 // Ensemble includes
 #include "ensemble.h"
 
-
-
-
 //----------------------------------
 // Inline functions
 //----------------------------------
 /**
 * \brief When using non-filtered activity, applies PES to a spike vector
 */
-void pes_apply(uint32_t n_populations, uint32_t n_neurons_total,
-               const uint32_t *population_lengths, value_t *decoder,
-               const uint32_t *spikes, const if_collection_t *modulatory_filters);
+void pes_apply(const ensemble_state_t *ensemble, const if_collection_t *modulatory_filters);
 
 //----------------------------------
 // Functions

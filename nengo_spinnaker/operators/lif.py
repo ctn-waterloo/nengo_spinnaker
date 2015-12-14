@@ -699,6 +699,7 @@ class EnsembleSlice(Vertex):
         0:  "Input filter",
         1:  "Neuron update",
         2:  "Decode and transmit output",
+        3:  "PES",
     }
 
     def __init__(self, vertex_index, cluster_slices, input_slice, output_slice,

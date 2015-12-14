@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 
 import nengo
@@ -9,7 +10,7 @@ num_items = 5
 d_key = 2
 d_value = 4
 
-spinnaker = True
+spinnaker = False
 record_encoders = True
 
 rng = np.random.RandomState(seed=7)
@@ -109,21 +110,36 @@ test = ~train
 axes[3].plot(t[test], sim.data[p_recall][test] - sim.data[p_values][test])
 
 
-
-def plot_2d(text, xy):
-    plt.figure()
-    plt.title(text)
-    plt.scatter(xy[:, 0], xy[:, 1], label="Encoders")
-    plt.scatter(keys[:, 0], keys[:, 1], c='red', s=150, alpha=0.6, label="Keys")
-    plt.xlim(-1.5, 1.5)
-    plt.ylim(-1.5, 2)
-    plt.legend()
-    plt.axes().set_aspect('equal')
-
 if record_encoders:
+    # Calculate encoder scale
     scale = (sim.model.params[memory].gain / memory.radius)[:, np.newaxis]
 
-    plot_2d("Before", sim.data[p_encoders][0].copy() / scale)
-    plot_2d("After", sim.data[p_encoders][-1].copy() / scale)
+    # Create figure to show encoder animation
+    figure, axis = plt.subplots()
+    axis.set_xlim(-1.5, 1.5)
+    axis.set_ylim(-1.5, 2)
+    axis.set_aspect("equal")
+
+    # Plot empty encoder and keys scatter
+    scatter = axis.scatter([],[], label="Encoders")
+    axis.scatter(keys[:, 0], keys[:, 1], c="red", s=150, alpha=0.6, label="Keys")
+
+    # Generate legend
+    axis.legend()
+
+    def initfig():
+        scatter.set_offsets([[]])
+        return (scatter,)
+
+    def updatefig(frame, encoders):
+        xy = encoders[frame].copy() / scale
+        scatter.set_offsets(xy)
+
+        return (scatter,)
+
+    # Play animation
+    ani = animation.FuncAnimation(figure, updatefig, init_func=initfig, frames=range(int(T / (2 * dt))),
+                                  fargs=(sim.data[p_encoders],), interval=5,
+                                  blit=True, repeat=False)
 
 plt.show()

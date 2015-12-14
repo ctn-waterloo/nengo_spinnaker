@@ -111,7 +111,7 @@ static inline void voja_neuron_spiked(value_t *encoder_vector, value_t gain,
       // Loop through input dimensions
       for(uint d = 0; d < decoded_input->size; d++)
       {
-        encoder_vector[d] += (input_scale * decoded_input_signal[d]) - (learning_rate * learnt_encoder_vector[d]);
+        learnt_encoder_vector[d] += (input_scale * decoded_input_signal[d]) - (learning_rate * learnt_encoder_vector[d]);
       }
     }
   }

@@ -512,7 +512,7 @@ class EnsembleLIF(object):
                 self.ensemble.n_neurons,
                 self.learnt_enc_dims))
 
-            # For each cluster read back the voltage data
+            # For each cluster read back the encoder data
             for cl in self.clusters:
                 # For each neuron slice copy in the encoder data
                 for neurons, data in cl.get_encoder_data(n_steps):

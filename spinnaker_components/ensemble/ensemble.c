@@ -116,7 +116,7 @@ void simulate_neurons(
     else
     {
       // Compute the neuron input, this is a combination of (a) the bias, (b)
-      // the inhibitory input times the gain and (c) the encoded input.
+      // the inhibitory input times the gain and (c) the non-learnt encoded input.
       neuron_input += ensemble->bias[n];
       neuron_input += inhib_input * ensemble->gain[n];
       neuron_input += dot_product(n_dims, encoder_vector, input);
@@ -601,14 +601,6 @@ void c_main(void)
   record_voltages.record = ensemble.parameters.flags & RECORD_VOLTAGES;
   if (!record_buffer_initialise_voltages(
         &record_voltages, region_start(REC_VOLTAGES_REGION, address),
-        ensemble.parameters.n_neurons))
-  {
-    return;
-  }
-
-  record_encoders.record = ensemble.parameters.flags & RECORD_ENCODERS;
-  if (!record_buffer_initialise_spikes(
-        &record_spikes, region_start(REC_SPIKES_REGION, address),
         ensemble.parameters.n_neurons))
   {
     return;

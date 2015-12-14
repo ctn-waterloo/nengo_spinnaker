@@ -92,7 +92,9 @@ class VoltageRecordingRegion(RecordingRegion):
 class EncoderRecordingRegion(RecordingRegion):
     """Region used to record learnt encoders."""
     def __init__(self, n_steps, n_dimensions):
-        self.n_steps = n_steps
+        # Superclass
+        super(EncoderRecordingRegion, self).__init__(n_steps)
+
         self.n_dimensions = n_dimensions
 
     def bytes_per_frame(self, n_neurons):

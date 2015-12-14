@@ -1191,8 +1191,9 @@ def _lif_dtcm_usage(size_in, size_out, size_learnt_out,
 
     # Per neuron cost = encoders + gain + bias + voltage + refractory counter
     # Per neuron in cluster cost = decoders
-    size = (n_neurons * (size_in + 3) + size_out + size_learnt_out + size_in +
-            n_neurons // 2) + n_neurons_in_cluster * size_out
+    total_size_out = size_out + size_learnt_out
+    size = (n_neurons * (size_in + 3) + total_size_out + size_in +
+            n_neurons // 2) + (n_neurons_in_cluster * total_size_out)
 
     return size * 4
 

@@ -1178,7 +1178,8 @@ def _get_basic_region_arguments(neuron_slice, output_slice,
 def _lif_sdram_usage(size_in, size_out, size_learnt_out, n_neurons):
     """Approximation of SDRAM usage."""
     # Per neuron cost = encoders + decoders + gain + bias
-    size = n_neurons * (size_in + size_out + size_learnt_out + 2) + size_out
+    total_size_out = size_out + size_learnt_out
+    size = (n_neurons * (size_in + total_size_out + 2)) + total_size_out
     return size * 4
 
 

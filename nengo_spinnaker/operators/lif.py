@@ -700,6 +700,7 @@ class EnsembleSlice(Vertex):
         1:  "Neuron update",
         2:  "Decode and transmit output",
         3:  "PES",
+        4:  "Voja",
     }
 
     def __init__(self, vertex_index, cluster_slices, input_slice, output_slice,

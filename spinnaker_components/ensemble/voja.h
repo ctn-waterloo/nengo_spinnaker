@@ -88,6 +88,8 @@ static inline void voja_neuron_spiked(value_t *encoder_vector, value_t gain,
                                       const if_collection_t *modulatory_filters,
                                       const if_collection_t *learnt_encoder_filters)
 {
+  profiler_write_entry(PROFILER_ENTER | PROFILER_VOJA);
+
   // Loop through all the learning rules
   for(uint32_t l = 0; l < g_num_voja_learning_rules; l++)
   {
@@ -115,6 +117,8 @@ static inline void voja_neuron_spiked(value_t *encoder_vector, value_t gain,
       }
     }
   }
+
+  profiler_write_entry(PROFILER_EXIT | PROFILER_VOJA);
 }
 
 //----------------------------------

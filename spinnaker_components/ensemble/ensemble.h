@@ -42,6 +42,7 @@
 #define PROFILER_NEURON_UPDATE    1
 #define PROFILER_DECODE           2
 #define PROFILER_PES              3
+#define PROFILER_VOJA             4
 /*****************************************************************************/
 
 /*****************************************************************************/

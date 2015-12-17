@@ -970,8 +970,9 @@ class PESRegion(regions.Region):
         self.learning_rules = []
         self.n_neurons = n_neurons
 
-    def sizeof(self, *args):
-        return 4 + (len(self.learning_rules) * 24)
+    def sizeof(self, output_slice, learnt_output_slice):
+        sliced_rules = self.get_sliced_learning_rules(learnt_output_slice)
+        return 4 + (len(sliced_rules) * 24)
 
     def write_subregion_to_file(self, fp, output_slice, learnt_output_slice):
         # Get number of static decoder rows - used to offset
@@ -979,15 +980,13 @@ class PESRegion(regions.Region):
         n_decoder_rows = output_slice.stop - output_slice.start
 
         # Filter learning rules that learn decoders within learnt output slice
-        sliced_learning_rules = [
-            l for l in self.learning_rules
-            if (l.decoder_start < learnt_output_slice.stop
-                and l.decoder_stop > learnt_output_slice.start)]
+        sliced_rules = self.get_sliced_learning_rules(learnt_output_slice)
+
         # Write number of learning rules for slice
-        fp.write(struct.pack("<I", len(sliced_learning_rules)))
+        fp.write(struct.pack("<I", len(sliced_rules)))
 
         # Loop through sliced learning rules
-        for l in sliced_learning_rules:
+        for l in sliced_rules:
             # Error signal starts either at 1st dimension or the first
             # dimension of decoder that occurs within learnt output slice
             error_start_dim = max(0,
@@ -1013,6 +1012,11 @@ class PESRegion(regions.Region):
                 error_end_dim,
                 decoder_row,
                 l.activity_filter_index))
+
+    def get_sliced_learning_rules(self, learnt_output_slice):
+        return [l for l in self.learning_rules
+                if (l.decoder_start < learnt_output_slice.stop
+                    and l.decoder_stop > learnt_output_slice.start)]
 
 VojaLearningRule = collections.namedtuple(
     "VojaLearningRule",

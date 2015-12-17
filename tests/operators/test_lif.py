@@ -128,6 +128,47 @@ def test_LIFRegion(dt, tau_rc, tau_ref):
 
 
 @pytest.mark.parametrize(
+    "output_slice, learnt_output_slice, learning_rule_decoder_slices",
+    [(slice(0, 4), slice(0, 2), [slice(0, 2)]),
+     (slice(0, 4), slice(0, 2), [slice(2, 4)]),
+     (slice(0, 4), slice(0, 2), [slice(1, 2)]),
+     (slice(0, 4), slice(2, 4), [slice(1, 3)]),
+     (slice(0, 4), slice(2, 4), [slice(1, 5)])]
+)
+def test_PESRegion(output_slice, learnt_output_slice,
+                   learning_rule_decoder_slices):
+
+    # Build region with list of learning rules with specified slices
+    region = lif.PESRegion(100)
+    region.learning_rules.extend(
+        [lif.PESLearningRule(1e-4, 1, l.start, l.stop, -1)
+         for l in learning_rule_decoder_slices])
+
+    # Get region size
+    region_size = region.sizeof(output_slice, learnt_output_slice)
+
+    # Check that the data is written out correctly
+    # Create the file and write to it
+    fp = tempfile.TemporaryFile()
+    region.write_subregion_to_file(fp, output_slice, learnt_output_slice)
+
+    # Read everything back
+    fp.seek(0)
+    values = fp.read()
+    assert len(values) == region_size
+
+    # Unpack number of learning_rules
+    num_rules_read = struct.unpack("<I", values[:4])[0]
+
+    #num_rules_check = 0
+    #for l in learning_rule_decoder_slices:
+    #    # Get overlap with
+    #    start_overlap = learnt_output_slice.stop - l.start
+    #    end_overlap = l.stop - learnt_output_slice.start
+
+    # **TODO** check region_size against 4 + (num_rules_check * 24)
+
+@pytest.mark.parametrize(
     "neuron_slice, out_slice, learnt_out_slice, cluster_slices, cluster_lengths",
     [(slice(1, 99), slice(3, 44), slice(0, 0), [slice(0, 1), slice(1, 5)],
       [1, 4]),

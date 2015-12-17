@@ -24,39 +24,44 @@ class TestEnsembleLIF(object):
 
 
 @pytest.mark.parametrize(
-    ("machine_timestep", "size_in", "n_populations", "n_neurons_in_population",
-     "population_id", "input_slice", "neuron_slice", "output_slice",
-     "shared_input_vector", "shared_spike_vector", "sema_input", "sema_spikes",
-     "n_profiler_samples"),
-    [(1000, 3, 4, 100, 0, slice(0, 3), slice(0, 25), slice(0, 10),
+    ("machine_timestep", "size_in", "encoder_width", "n_populations",
+     "n_neurons_in_population", "population_id", "input_slice",
+     "neuron_slice", "output_slice", "learnt_output_slice",
+     "shared_input_vector", "shared_spike_vector", "sema_input",
+     "sema_spikes", "n_profiler_samples"),
+    [(1000, 3, 4, 4, 100, 0, slice(0, 3), slice(0, 25), slice(0, 10), slice(0, 0),
       0x6780, 0x7800, 0x7804, 0x7808, 0),
-     (2000, 1, 2, 101, 4, slice(1, 5), slice(22, 25), slice(3, 10),
+     (2000, 1, 2, 4, 101, 4, slice(1, 5), slice(22, 25), slice(3, 10), slice(3, 10),
       0x6780, 0x7800, 0x6000, 0x6004, 6000),
      ])
 @pytest.mark.parametrize("record_spikes", (True, False))
 @pytest.mark.parametrize("record_voltages", (True, False))
-def test_EnsembleRegion(machine_timestep, size_in, n_populations,
-                        n_neurons_in_population, population_id, input_slice,
-                        neuron_slice, output_slice, shared_input_vector,
+@pytest.mark.parametrize("record_encoders", (True, False))
+def test_EnsembleRegion(machine_timestep, size_in, encoder_width,
+                        n_populations, n_neurons_in_population, population_id,
+                        input_slice, neuron_slice, output_slice,
+                        learnt_output_slice, shared_input_vector,
                         shared_spike_vector, sema_input, sema_spikes,
-                        n_profiler_samples, record_spikes, record_voltages):
+                        n_profiler_samples, record_spikes, record_voltages,
+                        record_encoders):
     # Create the region
-    region = lif.EnsembleRegion(machine_timestep, size_in,
+    region = lif.EnsembleRegion(machine_timestep, size_in, encoder_width,
                                 record_spikes=record_spikes,
-                                record_voltages=record_voltages)
+                                record_voltages=record_voltages,
+                                record_encoders=record_encoders)
 
     # Update the region
     region.n_profiler_samples = n_profiler_samples
 
     # Check that the size is reported correctly
-    assert region.sizeof() == 4*15  # 15 words
+    assert region.sizeof() == 4*17  # 17 words
 
     # Check that the region is written out correctly
     fp = tempfile.TemporaryFile()
     region.write_subregion_to_file(
         fp, n_populations, population_id, n_neurons_in_population, input_slice,
-        neuron_slice, output_slice, shared_input_vector, shared_spike_vector,
-        sema_input, sema_spikes
+        neuron_slice, output_slice, learnt_output_slice, shared_input_vector,
+        shared_spike_vector, sema_input, sema_spikes
     )
 
     # Check that the correct amount of data was written
@@ -70,18 +75,22 @@ def test_EnsembleRegion(machine_timestep, size_in, n_populations,
         flags |= 1 << 0
     if record_voltages:
         flags |= 1 << 1
+    if record_encoders:
+        flags |= 1 << 2
 
     # Check that the data was correct
-    assert struct.unpack("<15I", data) == (
+    assert struct.unpack("<17I", data) == (
         machine_timestep,
         neuron_slice.stop - neuron_slice.start,
         size_in,
+        encoder_width,
         n_neurons_in_population,
         n_populations,
         population_id,
         input_slice.start,
         input_slice.stop - input_slice.start,
         output_slice.stop - output_slice.start,
+        learnt_output_slice.stop - learnt_output_slice.start,
         n_profiler_samples,
         flags,
         shared_input_vector,
@@ -119,40 +128,44 @@ def test_LIFRegion(dt, tau_rc, tau_ref):
 
 
 @pytest.mark.parametrize(
-    "neuron_slice, out_slice, cluster_slices, cluster_lengths",
-    [(slice(1, 99), slice(3, 44), [slice(0, 1), slice(1, 5)],
+    "neuron_slice, out_slice, learnt_out_slice, cluster_slices, cluster_lengths",
+    [(slice(1, 99), slice(3, 44), slice(0, 0), [slice(0, 1), slice(1, 5)],
       [1, 4]),
-     (slice(1, 99), slice(13, 54), [slice(0, 1), slice(1, 5), slice(5, 40)],
+     (slice(1, 99), slice(13, 54), slice(13, 54), [slice(0, 1), slice(1, 5), slice(5, 40)],
       [1, 4, 35])]
 )
-def test_get_basic_region_arguments(neuron_slice, out_slice, cluster_slices,
-                                    cluster_lengths):
+def test_get_basic_region_arguments(neuron_slice, out_slice, learnt_out_slice,
+                                    cluster_slices, cluster_lengths):
     # Get the region arguments using these parameters
     region_args = lif._get_basic_region_arguments(neuron_slice, out_slice,
-                                                  cluster_slices)
+                                                  learnt_out_slice, cluster_slices)
 
     # For each region assert that the arguments are correct
-    assert region_args[lif.EnsembleRegions.ensemble].kwargs == {
+    assert region_args[lif.Regions.ensemble].kwargs == {
         "n_populations": len(cluster_slices),
         "n_neurons_in_population": sum(cluster_lengths),
     }
 
-    for r in (lif.EnsembleRegions.neuron,
-              lif.EnsembleRegions.input_filters,
-              lif.EnsembleRegions.input_routing,
-              lif.EnsembleRegions.inhibition_filters,
-              lif.EnsembleRegions.inhibition_routing):
+    for r in (lif.Regions.neuron,
+              lif.Regions.input_filters,
+              lif.Regions.input_routing,
+              lif.Regions.inhibition_filters,
+              lif.Regions.inhibition_routing):
         assert region_args[r] == lif.Args()
 
-    for r in (lif.EnsembleRegions.encoders,
-              lif.EnsembleRegions.bias,
-              lif.EnsembleRegions.gain,
-              lif.EnsembleRegions.spikes,
-              lif.EnsembleRegions.voltages):
+    for r in (lif.Regions.encoders,
+              lif.Regions.bias,
+              lif.Regions.gain,
+              lif.Regions.spike_recording,
+              lif.Regions.voltage_recording,
+              lif.Regions.encoder_recording):
         assert region_args[r] == lif.Args(neuron_slice)
 
-    for r in (lif.EnsembleRegions.decoders, lif.EnsembleRegions.keys):
+    for r in (lif.Regions.decoders, lif.Regions.keys):
         assert region_args[r] == lif.Args(out_slice)
 
-    assert region_args[lif.EnsembleRegions.population_length] == \
+    for r in (lif.Regions.learnt_decoders, lif.Regions.learnt_keys):
+        assert region_args[r] == lif.Args(learnt_out_slice)
+
+    assert region_args[lif.Regions.population_length] == \
         lif.Args(cluster_lengths)

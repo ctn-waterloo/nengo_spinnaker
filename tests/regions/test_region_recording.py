@@ -102,7 +102,7 @@ class TestVoltageRegion(object):
         float_to_u1_15 = NumpyFloatToFixConverter(False, 16, 15)
         voltages = np.random.uniform(0.0, 1.0, size=(3, 38))
         voltages_fp = float_to_u1_15(voltages)
-        data = voltages_fp.tobytes()
+        data = voltages_fp.tostring()
 
         # Construct a memory to read from
         mem = mock.Mock()

@@ -1,3 +1,4 @@
+import itertools
 import nengo
 import numpy as np
 import pytest
@@ -126,6 +127,32 @@ def test_LIFRegion(dt, tau_rc, tau_ref):
     assert (tp.value_to_fix(-np.expm1(-dt / tau_rc)) * 0.9 < dt_over_t_rc <
             tp.value_to_fix(-np.expm1(-dt / tau_rc)) * 1.1)
 
+@pytest.mark.parametrize(
+    "num_learning_rules",
+    [0, 1, 2])
+def test_VojaRegion(num_learning_rules):
+    """Test region specific to Voja learning."""
+    # Create the region
+    region = lif.VojaRegion(1.0)
+
+    # Add correct number of learning rules
+    region.learning_rules.extend(itertools.repeat(
+        lif.VojaLearningRule(1e-4, -1, 0, 0, -1),
+        num_learning_rules))
+
+    # Check that the size is reported correctly
+    assert region.sizeof() == (8 + (num_learning_rules * 20))
+
+    # Check that the data is written out correctly
+    # Create the file and write to it
+    fp = tempfile.TemporaryFile()
+    region.write_subregion_to_file(fp)
+
+    # Read everything back and check size is as sizeof reports
+    fp.seek(0)
+    values = fp.read()
+    assert len(values) == region.sizeof()
+
 
 @pytest.mark.parametrize(
     "output_slice, learnt_output_slice, learning_rule_decoder_slices",
@@ -137,7 +164,7 @@ def test_LIFRegion(dt, tau_rc, tau_ref):
 )
 def test_PESRegion(output_slice, learnt_output_slice,
                    learning_rule_decoder_slices):
-
+    """Test region specific to PES learning."""
     # Build region with list of learning rules with specified slices
     region = lif.PESRegion(100)
     region.learning_rules.extend(

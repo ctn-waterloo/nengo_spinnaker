@@ -627,7 +627,28 @@ class TestProbeNeurons(object):
         model.build(net)
 
         # Assert that we added the probe to the list of local probes and
-        # nothing else
+        # nothing elseobject_operators
         assert model.object_operators[a].local_probes == [p]
         assert len(model.object_operators) == 1
         assert len(model.connections_signals) == 0
+
+class TestProbeLearningRules(object):
+    """Test probing of Voja learnt encoders."""
+    def test_probe_voja_scaled_encoders(self):
+        # Create a network and standard model
+        with nengo.Network() as net:
+            a = nengo.Ensemble(100, 2)
+            b = nengo.Ensemble(100, 2)
+
+            a_b = nengo.Connection(a, b)
+            a_b.learning_rule_type = nengo.Voja()
+            p = nengo.Probe(a_b.learning_rule, "scaled_encoders")
+
+        # Create an empty model to build the probe into
+        model = builder.Model()
+        model.build(net)
+
+        # Assert that we added the probe to the list of local probes and
+        # nothing else
+        assert model.object_operators[b].local_probes == [p]
+        assert len(model.object_operators) == 2

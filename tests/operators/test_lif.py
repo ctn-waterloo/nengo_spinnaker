@@ -155,21 +155,20 @@ def test_VojaRegion(num_learning_rules):
 
 
 @pytest.mark.parametrize(
-    "output_slice, learnt_output_slice, learning_rule_decoder_slices",
-    [(slice(0, 4), slice(0, 2), [slice(0, 2)]),
-     (slice(0, 4), slice(0, 2), [slice(2, 4)]),
-     (slice(0, 4), slice(0, 2), [slice(1, 2)]),
-     (slice(0, 4), slice(2, 4), [slice(1, 3)]),
-     (slice(0, 4), slice(2, 4), [slice(1, 5)])]
+    "output_slice, learnt_output_slice, learning_rules",
+    [(slice(0, 4), slice(0, 2), [(slice(0, 2), slice(0, 2), 4)]),
+     (slice(0, 4), slice(0, 2), [(slice(2, 4),)]),
+     (slice(0, 4), slice(0, 2), [(slice(1, 2), slice(0, 1), 5)]),
+     (slice(0, 4), slice(2, 4), [(slice(1, 3), slice(1, 2), 4)]),
+     (slice(0, 4), slice(2, 4), [(slice(1, 5), slice(1, 3), 4)])]
 )
-def test_PESRegion(output_slice, learnt_output_slice,
-                   learning_rule_decoder_slices):
+def test_PESRegion(output_slice, learnt_output_slice, learning_rules):
     """Test region specific to PES learning."""
     # Build region with list of learning rules with specified slices
     region = lif.PESRegion(100)
     region.learning_rules.extend(
-        [lif.PESLearningRule(1e-4, 1, l.start, l.stop, -1)
-         for l in learning_rule_decoder_slices])
+        [lif.PESLearningRule(1e-4, 1, l[0].start, l[0].stop, -1)
+         for l in learning_rules])
 
     # Get region size
     region_size = region.sizeof(output_slice, learnt_output_slice)
@@ -187,13 +186,27 @@ def test_PESRegion(output_slice, learnt_output_slice,
     # Unpack number of learning_rules
     num_rules_read = struct.unpack("<I", values[:4])[0]
 
-    #num_rules_check = 0
-    #for l in learning_rule_decoder_slices:
-    #    # Get overlap with
-    #    start_overlap = learnt_output_slice.stop - l.start
-    #    end_overlap = l.stop - learnt_output_slice.start
+    # Extract and count the learning rules which SHOULD'VE been written
+    correct_learning_rules = [l for l in learning_rules if len(l) > 1]
+    num_rules_correct = len(correct_learning_rules)
 
-    # **TODO** check region_size against 4 + (num_rules_check * 24)
+    # Check these match
+    assert num_rules_read == num_rules_correct
+
+    # Check on this basis whether size is correct
+    assert region_size == (4 + (num_rules_correct * 24))
+
+    # Loop through correct learning rules
+    for i, l in enumerate(correct_learning_rules):
+        # Unpack
+        _, _, error_start, error_stop, decoder_start, _ = struct.unpack_from(
+            "<i4Ii", values, 4 + (i * 24))
+
+        # Check these match with correct parameters
+        assert error_start == l[1].start
+        assert error_stop == l[1].stop
+        assert decoder_start == l[2]
+
 
 @pytest.mark.parametrize(
     "neuron_slice, out_slice, learnt_out_slice, cluster_slices, cluster_lengths",

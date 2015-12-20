@@ -75,13 +75,14 @@ def test_load_application():
     # Patch out all the methods that should be called
     with \
             mock.patch("nengo_spinnaker.netlist.netlist."
-                       "build_routing_tables") as build_routing_tables, \
+                       "build_and_minimise_routing_tables") as \
+                               build_and_minimise_routing_tables, \
             mock.patch("nengo_spinnaker.netlist.netlist."
                        "build_application_map") as build_application_map, \
             mock.patch("nengo_spinnaker.netlist.netlist."
                        "sdram_alloc_for_vertices") as sdram_alloc:
         # Create replacement methods for patched methods
-        def build_routing_tables_fn(routes, net_keys, **kwargs):
+        def build_and_minimise_routing_tables_fn(routes, net_keys, **kwargs):
             # Assert that the arguments were correct
             assert routes == model.routes
             assert net_keys == {net: (0x33330000, 0xffff0000)}
@@ -93,7 +94,8 @@ def test_load_application():
             # Return a routing table
             return routing_table
 
-        build_routing_tables.side_effect = build_routing_tables_fn
+        build_and_minimise_routing_tables.side_effect = \
+            build_and_minimise_routing_tables_fn
 
         def build_application_map_fn(vertices_applications, placements,
                                      allocations):
@@ -145,7 +147,7 @@ def test_load_application():
         model.load_application(controller)
 
         # Assert methods were called
-        assert build_routing_tables.call_count == 1
+        assert build_and_minimise_routing_tables.call_count == 1
         assert build_application_map.call_count == 1
         assert sdram_alloc.call_count == 1
 

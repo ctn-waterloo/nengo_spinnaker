@@ -487,7 +487,8 @@ class EnsembleLIF(object):
             for cl in self.clusters:
                 # For each neuron slice copy in the spike data
                 for neurons, data in cl.get_spike_data(n_steps):
-                    spikes[:, neurons] = data
+                    neurons_stop = neurons.start + data.shape[1]
+                    spikes[:, neurons.start:neurons_stop] = data
 
             # Recast the data as floats
             spike_vals = np.zeros((n_steps, self.ensemble.n_neurons))

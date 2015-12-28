@@ -1,5 +1,6 @@
 import numpy as np
-
+from scipy.stats import binned_statistic
+from six import iterkeys, itervalues
 
 def print_summary(profiling_data, duration):
     """
@@ -27,11 +28,9 @@ def print_summary(profiling_data, duration):
         last_sample_time = np.amax(sample_timestep_indices) + 1
         print("\tLast sample time:%fms" % (last_sample_time))
 
-        # Create bins to hold total time spent in this tag during each
-        # Timestep and add duration to total in corresponding bin
-        total_sample_duration_per_timestep = np.zeros(last_sample_time)
-        for sample_duration, index in zip(times[1], sample_timestep_indices):
-            total_sample_duration_per_timestep[index] += sample_duration
+        # Sum durations of samples binned into ms timestep bibs
+        total_sample_duration_per_timestep = binned_statistic(
+            times[0], times[1], statistic="sum", bins=ms_time_bins)[0]
 
         print("\tMean time per timestep:%fms" %
               (np.average(total_sample_duration_per_timestep)))
@@ -42,16 +41,20 @@ def write_csv_header(profiling_data, csv_writer, extra_column_headers):
     Write header row for standard profiler format CSV file with extra
     column headers followed by tag names found in profiling_data
     """
-    csv_writer.writerow(extra_column_headers + list(profiling_data.keys()))
+    csv_writer.writerow(extra_column_headers + list(iterkeys(profiling_data)))
 
 
-def write_csv_row(profiling_data, csv_writer, extra_column_values):
+def write_csv_row(profiling_data, duration_s, dt_s, csv_writer, extra_column_values):
     """
     Write a row into standard profiler format CSV with user values
     followed by mean times for each profiler tag extracted from profiling_data
     """
+    timestep_bins = np.arange(0.0, duration_s * 1000.0, dt_s * 1000.0)
+
     # Calculate mean of all profiling tags
-    mean_times = [np.average(t[1]) for t in profiling_data.values()]
+    mean_times = [np.average(binned_statistic(t[0], t[1], statistic="sum",
+                                              bins=timestep_bins)[0])
+                  for t in itervalues(profiling_data)]
 
     # Write extra column followed by means
     csv_writer.writerow(extra_column_values + mean_times)

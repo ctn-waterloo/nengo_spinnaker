@@ -422,13 +422,13 @@ class EnsembleLIF(object):
 
         partition_constraints = {
             sdram_constraint: _make_constraint(_lif_sdram_usage,
-                                               self.ensemble.size_in,
+                                               encoders_with_gain.shape[1],
                                                size_out, size_learnt_out),
             dtcm_constraint: _make_constraint(_lif_dtcm_usage,
-                                              self.ensemble.size_in,
+                                              encoders_with_gain.shape[1],
                                               size_out, size_learnt_out),
             cpu_constraint: _make_constraint(_lif_cpu_usage,
-                                             self.ensemble.size_in,
+                                             encoders_with_gain.shape[1],
                                              size_out, size_learnt_out),
         }
 

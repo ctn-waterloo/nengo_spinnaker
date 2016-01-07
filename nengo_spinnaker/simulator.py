@@ -156,6 +156,7 @@ class Simulator(object):
                 if status.cpu_state is not AppState.sync0:
                     print("Core ({}, {}, {}) in state {!s}".format(
                         x, y, p, status.cpu_state))
+                    print self.controller.get_iobuf(p, x, y)
             raise Exception("Unexpected core failures.")
 
         logger.info("Preparing and loading machine took {:3f} seconds".format(

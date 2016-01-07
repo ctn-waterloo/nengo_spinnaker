@@ -128,7 +128,7 @@ enum
   READ_WHOLE_VECTOR             = 1,  // Read input vector into DTCM
   WRITE_SPIKE_VECTOR            = 2,  // Write spike vector into SDRAM
   READ_SPIKE_VECTOR             = 3,  // Read spike vector into DTCM for decoding
-  WRITE_FILTERED_LEARNT_VECTOR  = 4,  // Write subspace of learnt signal into SDRAM
+  WRITE_FILTERED_LEARNT_VECTOR  = 4,  // Write subspace of learnt signal into SDRAM **NOTE** this must be last tag
 } dma_tag_ops;
 /*****************************************************************************/
 

@@ -54,6 +54,41 @@ encoder_recording_buffer_t record_encoders;
 
 /*****************************************************************************/
 
+
+/*****************************************************************************/
+// Writes the accumulated local section of the standard filter's output to SDRAM
+static inline void write_filtered_vector()
+{
+  // Compute the size of the transfer
+  uint size = sizeof(value_t) * ensemble.parameters.input_subspace.n_dims;
+
+  spin1_dma_transfer(
+    WRITE_FILTERED_VECTOR,
+    sdram_input_vector_local,  // Section of the SDRAM vector we manage
+    ensemble.input_local,      // Section of the DTCM vector we're updating
+    DMA_WRITE,
+    size
+  );
+}
+/*****************************************************************************/
+
+/*****************************************************************************/
+// Writes the local section of the specified learnt input filter's output to SDRAM
+static inline void write_filtered_learnt_vector(uint32_t signal)
+{
+  // Compute the size of the transfer
+  uint size = sizeof(value_t) * ensemble.parameters.input_subspace.n_dims;
+  
+  spin1_dma_transfer(
+    WRITE_FILTERED_LEARNT_VECTOR,
+    sdram_learnt_input_vector_local[signal],   // Section of the SDRAM vector we manage
+    ensemble.learnt_input_local[signal],       // Section of the DTCM vector we're updating
+    DMA_WRITE,
+    size
+  );
+}
+/*****************************************************************************/
+
 /*****************************************************************************/
 // Simulate neurons and slowly dribble a spike vector out into a given array.
 // This function will also apply any encoder learning rules.
@@ -370,6 +405,22 @@ void dma_complete(uint transfer_id, uint tag)
     // Decode and transmit neuron output
     decode_output_and_transmit(&ensemble);
   }
+  else if(tag >= WRITE_FILTERED_LEARNT_VECTOR)
+  {
+    // Extract index of potential next learnt vector from tag
+    uint next_learnt_vector = (tag - WRITE_FILTERED_LEARNT_VECTOR) + 1;
+
+    // If there are more to go, write next learnt vector to sdram
+    if(next_learnt_vector < ensemble.parameters.n_learnt_input_signals)
+    {
+      write_filtered_learnt_vector(next_learnt_vector);
+    }
+    // Otherwise, write filtered vector
+    else
+    {
+      write_filtered_vector();
+    }
+  }
 }
 /*****************************************************************************/
 
@@ -417,17 +468,16 @@ void timer_tick(uint ticks, uint arg1)
   // neurons.
   if (ensemble.parameters.n_populations > 1)
   {
-    // Compute the size of the transfer
-    uint size = sizeof(value_t) * ensemble.parameters.input_subspace.n_dims;
-
-    // Start the DMA transfer
-    spin1_dma_transfer(
-      WRITE_FILTERED_VECTOR,
-      sdram_input_vector_local,  // Section of the SDRAM vector we manage
-      ensemble.input_local,      // Section of the DTCM vector we're updating
-      DMA_WRITE,
-      size
-    );
+    // If there are any learnt input signals to transfer, start transfer of 1st signal
+    if(ensemble.parameters.n_learnt_input_signals > 0)
+    {
+      write_filtered_learnt_vector(0);
+    }
+    // Otherwise, transfer our section of filtered vector
+    else
+    {
+      write_filtered_vector();
+    }
   }
   else
   {

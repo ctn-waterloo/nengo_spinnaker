@@ -866,7 +866,7 @@ class EnsembleRegion(regions.Region):
         self.record_encoders = record_encoders
 
     def sizeof(self, *args, **kwargs):
-        return 17 * 4
+        return (18 + self.n_learnt_input_signals) * 4
 
     def write_subregion_to_file(self, fp, n_populations, population_id,
                                 n_neurons_in_population, input_slice,
@@ -913,6 +913,8 @@ class EnsembleRegion(regions.Region):
         n_learnt_decoder_rows = learnt_output_slice.stop -\
             learnt_output_slice.start
 
+        assert len(shared_learnt_input_vector) == self.n_learnt_input_signals
+        
         # Add the flags
         flags = 0x0
         for i, predicate in enumerate((self.record_spikes,
@@ -923,7 +925,7 @@ class EnsembleRegion(regions.Region):
 
         # Pack and write the data
         fp.write(struct.pack(
-            "<%uI" % (18 + len(shared_learnt_input_vector)),
+            "<%uI" % (18 + self.n_learnt_input_signals),
             self.machine_timestep,
             n_neurons,
             self.size_in,
@@ -1219,8 +1221,9 @@ def _lif_dtcm_usage(size_in, size_out, size_learnt_out,
 
     # Per neuron cost = encoders + gain + bias + voltage + refractory counter
     # Per neuron in cluster cost = decoders
+    # **TODO** filters (especially learnt ones need taking into account)
     total_size_out = size_out + size_learnt_out
-    size = (n_neurons * (size_in + 3) + total_size_out + size_in +
+    size = (n_neurons * (size_in + 3) + total_size_out + (5 * size_in) +
             n_neurons // 2) + (n_neurons_in_cluster * total_size_out)
 
     return size * 4

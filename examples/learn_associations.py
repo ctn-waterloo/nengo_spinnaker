@@ -10,7 +10,7 @@ num_items = 5
 d_key = 2
 d_value = 4
 
-spinnaker = False
+spinnaker = True
 record_encoders = True
 
 rng = np.random.RandomState(seed=7)

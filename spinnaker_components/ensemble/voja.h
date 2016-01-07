@@ -84,9 +84,9 @@ static inline value_t voja_get_learning_rate(const voja_parameters_t *parameters
 /**
 * \brief When using non-filtered activity, applies Voja when neuron spikes
 */
-static inline void voja_neuron_spiked(value_t *encoder_vector, value_t gain,
+static inline void voja_neuron_spiked(value_t *encoder_vector, value_t gain, uint32_t n_dims,
                                       const if_collection_t *modulatory_filters,
-                                      const if_collection_t *learnt_encoder_filters)
+                                      const value_t **learnt_input)
 {
   profiler_write_entry(PROFILER_ENTER | PROFILER_VOJA);
 
@@ -100,9 +100,8 @@ static inline void voja_neuron_spiked(value_t *encoder_vector, value_t gain,
       // Get learning rate
       const value_t learning_rate = voja_get_learning_rate(parameters, modulatory_filters);
 
-      // Extract decoded input signal from filter
-      const if_filter_t *decoded_input = &learnt_encoder_filters->filters[parameters->decoded_input_filter_index];
-      const value_t *decoded_input_signal = decoded_input->output;
+      // Get correct signal from learnt input
+      const value_t *decoded_input_signal = learnt_input[parameters->decoded_input_filter_index];
 
       // Get this neuron's encoder vector, offset by the encoder offset
       value_t *learnt_encoder_vector = encoder_vector + parameters->encoder_offset;
@@ -111,7 +110,7 @@ static inline void voja_neuron_spiked(value_t *encoder_vector, value_t gain,
       const value_t input_scale = learning_rate * gain * g_voja_one_over_radius;
 
       // Loop through input dimensions
-      for(uint d = 0; d < decoded_input->size; d++)
+      for(uint d = 0; d < n_dims; d++)
       {
         learnt_encoder_vector[d] += (input_scale * decoded_input_signal[d]) - (learning_rate * learnt_encoder_vector[d]);
       }

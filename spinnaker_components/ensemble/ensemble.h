@@ -62,32 +62,33 @@ enum
 // within the system region.
 typedef struct _ensemble_parameters
 {
-  uint32_t machine_timestep;  // Length of timestep (in microseconds)
-  uint32_t n_neurons;         // Number of neurons in this portion
-  uint32_t n_dims;            // Number of dimensions represented
-  uint32_t encoder_width;     // Total width of encoder
+  uint32_t machine_timestep;              // Length of timestep (in microseconds)
+  uint32_t n_neurons;                     // Number of neurons in this portion
+  uint32_t n_dims;                        // Number of dimensions represented
+  uint32_t encoder_width;                 // Total width of encoder
 
-  uint32_t n_neurons_total;   // Number of neurons overall
-  uint32_t n_populations;     // Number of populations overall
-  uint32_t population_id;     // Index of this population
+  uint32_t n_neurons_total;               // Number of neurons overall
+  uint32_t n_populations;                 // Number of populations overall
+  uint32_t population_id;                 // Index of this population
 
   struct
   {
-    uint32_t offset;          // Index of first dimension
-    uint32_t n_dims;          // Number of dimensions
-  } input_subspace;           // Parameters for the input subspace
+    uint32_t offset;                      // Index of first dimension
+    uint32_t n_dims;                      // Number of dimensions
+  } input_subspace;                       // Parameters for the input subspace
 
-  uint32_t n_decoder_rows;        // Number of output dimensions
-  uint32_t n_learnt_decoder_rows; // Number of learnt output dimensions
-  uint32_t n_profiler_samples;    // Number of profiler samples
-  uint32_t flags;                 // Flags as per `flags` enum
+  uint32_t n_decoder_rows;                // Number of output dimensions
+  uint32_t n_learnt_decoder_rows;         // Number of learnt output dimensions
+  uint32_t n_profiler_samples;            // Number of profiler samples
+  uint32_t n_learnt_input_signals;        // Number of learnt input signals
+  uint32_t flags;                         // Flags as per `flags` enum
 
   // Pointers into SDRAM
   value_t *sdram_input_vector;
   uint32_t *sdram_spike_vector;
 
-  volatile uint8_t *sema_input;   // Input vector synchronisation
-  volatile uint8_t *sema_spikes;  // Spike vector synchronisation
+  volatile uint8_t *sema_input;           // Input vector synchronisation
+  volatile uint8_t *sema_spikes;          // Spike vector synchronisation
 } ensemble_parameters_t;
 
 typedef struct _ensemble_state
@@ -97,7 +98,11 @@ typedef struct _ensemble_state
   void *state;                        // Neuron state
 
   value_t *input;                     // Filtered input vector
-  value_t *input_local;               // Start of the section we update
+  value_t *input_local;               // Start of the section of input we update
+
+  value_t **learnt_input;             // Filtered input vector from each signal
+  value_t **learnt_input_local;       // Start of section of learnt_input we update
+
   value_t inhibitory_input;           // Globally inhibitory input
 
   value_t *encoders;                  // Encoder matrix
@@ -119,10 +124,11 @@ typedef struct _ensemble_state
 // Operation codes for DMA tags
 enum
 {
-  WRITE_FILTERED_VECTOR = 0,  // Write subspace of input into SDRAM
-  READ_WHOLE_VECTOR     = 1,  // Read input vector into DTCM
-  WRITE_SPIKE_VECTOR    = 2,  // Write spike vector into SDRAM
-  READ_SPIKE_VECTOR     = 3,  // Read spike vector into DTCM for decoding
+  WRITE_FILTERED_VECTOR         = 0,  // Write subspace of input into SDRAM
+  READ_WHOLE_VECTOR             = 1,  // Read input vector into DTCM
+  WRITE_SPIKE_VECTOR            = 2,  // Write spike vector into SDRAM
+  READ_SPIKE_VECTOR             = 3,  // Read spike vector into DTCM for decoding
+  WRITE_FILTERED_LEARNT_VECTOR  = 4,  // Write subspace of learnt signal into SDRAM
 } dma_tag_ops;
 /*****************************************************************************/
 

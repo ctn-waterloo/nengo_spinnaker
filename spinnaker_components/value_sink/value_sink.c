@@ -37,7 +37,7 @@ void c_main(void)
     return;
   }
 
-  input_filtering_get_filters(&g_input, region_start(2, address));
+  input_filtering_get_filters(&g_input, region_start(2, address), NULL);
   input_filtering_get_routes(&g_input, region_start(3, address));
   rec_start = region_start(15, address);
 

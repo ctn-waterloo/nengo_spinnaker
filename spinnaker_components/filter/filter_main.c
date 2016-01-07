@@ -187,7 +187,7 @@ void c_main(void)
   transform = (value_t *) region_start(5, address);
 
   // Prepare the filters for receiving packets
-  input_filtering_get_filters(&g_filters, region_start(3, address));
+  input_filtering_get_filters(&g_filters, region_start(3, address), NULL);
   input_filtering_get_routes(&g_filters, region_start(4, address));
   input_filtering_initialise_output(&g_filters, g_filter.size_in);
 

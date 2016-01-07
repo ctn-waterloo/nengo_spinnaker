@@ -37,9 +37,13 @@ if_collection_t modulatory_filters;
 // Each output is encoded by a seperate encoder so these are also left seperate
 if_collection_t learnt_encoder_filters;
 
+value_t **sdram_learnt_input_vector_local;  // Our porrtion of the shared learnt input vector
+value_t *sdram_input_vector_local;          // Our portion of the shared input vector
+uint32_t *sdram_spikes_vector_local;        // Our portion of the shared spike vector
 
-value_t *sdram_input_vector_local;   // Our portion of the shared input vector
-uint32_t *sdram_spikes_vector_local; // Our portion of the shared spike vector
+// Input vectors corresponding to each learnt input signals - these are copied
+// From host, but would be a pain to append to the ensemble_parameters_t struct
+value_t **sdram_learnt_input_vector;
 
 uint32_t unpadded_spike_vector_size;
 uint spikes_write_size;
@@ -85,11 +89,8 @@ void simulate_neurons(
     uint32_t f = 0;
     uint32_t e = n_dims;
     value_t neuron_input = 0.0k;
-    for(; f < learnt_encoder_filters.n_filters; f++, e += n_dims)
+    for(; f < ensemble->parameters.n_learnt_input_signals; f++, e += n_dims)
     {
-      // Extract input signal from learnt encoder filter
-      const if_filter_t *filtered_input = &learnt_encoder_filters.filters[f];
-
       // Get encoder vector for this neuron offset for correct learnt encoder
       const value_t *learnt_encoder_vector = encoder_vector + e;
 
@@ -104,7 +105,7 @@ void simulate_neurons(
       if(!in_refractory_period)
       {
         neuron_input += dot_product(n_dims, learnt_encoder_vector,
-                                    filtered_input->output);
+                                    ensemble->learnt_input[f]);
       }
     }
 
@@ -133,8 +134,8 @@ void simulate_neurons(
         //filtered_activity_neuron_spiked(n);
 
         // Update non-filtered Voja learning
-        voja_neuron_spiked(encoder_vector, ensemble->gain[n],
-                           &modulatory_filters, &learnt_encoder_filters);
+        voja_neuron_spiked(encoder_vector, ensemble->gain[n], n_dims,
+                           &modulatory_filters, ensemble->learnt_input);
       }
     }
 
@@ -456,6 +457,14 @@ void c_main(void)
   spin1_memcpy(params, region_start(ENSEMBLE_REGION, address),
                sizeof(ensemble_parameters_t));
 
+
+  // Allocate array to hold pointers to SDRAM learnt input vectors and copy in pointers
+  MALLOC_OR_DIE(sdram_learnt_input_vector,
+                sizeof(value_t*) * params->n_learnt_input_signals);
+  spin1_memcpy(sdram_learnt_input_vector,
+               (uint8_t*)region_start(ENSEMBLE_REGION, address) + sizeof(ensemble_parameters_t),
+                sizeof(value_t*) * params->n_learnt_input_signals);
+
   // Prepare the input vector
   MALLOC_OR_DIE(ensemble.input, sizeof(value_t) * params->n_dims);
 
@@ -465,6 +474,28 @@ void c_main(void)
   sdram_input_vector_local = &params->sdram_input_vector[
     params->input_subspace.offset
   ];
+
+  // Allocate an array of local, global and shared pointers for each learnt input signals
+  MALLOC_OR_DIE(ensemble.learnt_input, sizeof(value_t*) * params->n_learnt_input_signals);
+  MALLOC_OR_DIE(ensemble.learnt_input_local, sizeof(value_t*) * params->n_learnt_input_signals);
+  MALLOC_OR_DIE(sdram_learnt_input_vector_local, sizeof(value_t*) * params->n_learnt_input_signals);
+
+  // Loop through learnt input signals
+  for(uint32_t i = 0; i < params->n_learnt_input_signals; i++)
+  {
+    io_printf(IO_BUF, "SDRAM %x", sdram_learnt_input_vector[i]);
+
+    // Allocate vector
+    MALLOC_OR_DIE(ensemble.learnt_input[i], sizeof(value_t) * params->n_dims);
+
+    // Store local offset
+    ensemble.learnt_input_local[i] = &ensemble.learnt_input[i][
+      params->input_subspace.offset];
+
+    // Store SDRAM offset
+    sdram_learnt_input_vector_local[i] = &sdram_learnt_input_vector[i][
+      params->input_subspace.offset];
+  }
 
   // Compute the spike size for writing into SDRAM
   spikes_write_size = params->n_neurons / 32;
@@ -476,26 +507,30 @@ void c_main(void)
 
   // Prepare the filters
   input_filtering_get_filters(&input_filters,
-                              region_start(INPUT_FILTERS_REGION, address));
+                              region_start(INPUT_FILTERS_REGION, address),
+                              NULL);
   input_filtering_get_routes(&input_filters,
                              region_start(INPUT_ROUTING_REGION, address));
   input_filters.output_size = params->input_subspace.n_dims;
   input_filters.output = ensemble.input_local;
 
   input_filtering_get_filters(&inhibition_filters,
-                              region_start(INHIB_FILTERS_REGION, address));
+                              region_start(INHIB_FILTERS_REGION, address),
+                              NULL);
   input_filtering_get_routes(&inhibition_filters,
                              region_start(INHIB_ROUTING_REGION, address));
   inhibition_filters.output_size = 1;
   inhibition_filters.output = &ensemble.inhibitory_input;
 
   input_filtering_get_filters(&modulatory_filters,
-                              region_start(MODULATORY_FILTERS_REGION, address));
+                              region_start(MODULATORY_FILTERS_REGION, address),
+                              NULL);
   input_filtering_get_routes(&modulatory_filters,
                              region_start(MODULATORY_ROUTING_REGION, address));
 
   input_filtering_get_filters(&learnt_encoder_filters,
-                              region_start(LEARNT_ENCODER_FILTERS_REGION, address));
+                              region_start(LEARNT_ENCODER_FILTERS_REGION, address),
+                              ensemble.learnt_input_local);
   input_filtering_get_routes(&learnt_encoder_filters,
                              region_start(LEARNT_ENCODER_ROUTING_REGION, address));
   // Copy in encoders

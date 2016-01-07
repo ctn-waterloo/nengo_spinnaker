@@ -336,9 +336,10 @@ class EnsembleLIF(object):
         ens_regions[Regions.population_length] = regions.ListRegion("I")
 
         # The ensemble region contains basic information about the ensemble
+        n_learnt_input_signals = len(learnt_encoder_filters)
         ens_regions[Regions.ensemble] = EnsembleRegion(
             model.machine_timestep, self.ensemble.size_in,
-            encoders_with_gain.shape[1])
+            encoders_with_gain.shape[1], n_learnt_input_signals)
 
         # The neuron region contains information specific to the neuron type
         ens_regions[Regions.neuron] = LIFRegion(
@@ -441,8 +442,10 @@ class EnsembleLIF(object):
             # For each slice we create a cluster of co-operating cores.  We
             # instantiate the cluster and then ask it to produce vertices which
             # will be added to the netlist.
-            cluster = EnsembleCluster(sl, self.ensemble.size_in, size_out,
-                                      size_learnt_out, ens_regions)
+            cluster = EnsembleCluster(sl, self.ensemble.size_in,
+                                      encoders_with_gain.shape[1], size_out,
+                                      size_learnt_out, n_learnt_input_signals,
+                                      ens_regions)
             self.clusters.append(cluster)
 
             # Get the vertices for the cluster
@@ -549,16 +552,18 @@ class EnsembleLIF(object):
 
 
 class EnsembleCluster(object):
-    def __init__(self, neuron_slice, size_in, size_out, size_learnt_out,
-                 regions):
+    def __init__(self, neuron_slice, size_in, encoder_width, size_out,
+                 size_learnt_out, n_learnt_input_signals, regions):
         """Create a new cluster of collaborating cores."""
         self.neuron_slice = neuron_slice
         self.regions = regions
         self.neuron_slices = list()
         self.vertices = list()
         self.size_in = size_in
+        self.encoder_width = encoder_width
         self.size_out = size_out
         self.size_learnt_out = size_learnt_out
+        self.n_learnt_input_signals = n_learnt_input_signals
 
     def make_vertices(self, cycles):
         """Partition the neurons onto multiple cores."""
@@ -590,9 +595,11 @@ class EnsembleCluster(object):
             return f_
 
         constraints = {
-            dtcm_constraint: _make_constraint(_lif_dtcm_usage, self.size_in,
+            dtcm_constraint: _make_constraint(_lif_dtcm_usage,
+                                              self.encoder_width,
                                               n_neurons_in_cluster=n_neurons),
-            cpu_constraint: _make_constraint(_lif_cpu_usage, self.size_in,
+            cpu_constraint: _make_constraint(_lif_cpu_usage,
+                                             self.encoder_width,
                                              n_neurons_in_cluster=n_neurons),
         }
 
@@ -636,9 +643,14 @@ class EnsembleCluster(object):
 
         # Allocate some shared memory for the cluster
         with controller(x=x, y=y):
-            # Get the shared input vector memory
+            # Allocate shared input vector memory
             shared_input_vector = controller.sdram_alloc(self.size_in*4,
                                                          clear=True)
+
+            # Allocate shared learnt input vector memory
+            shared_learnt_input_vector = [
+                controller.sdram_alloc(self.size_in*4, clear=True)
+                for _ in range(self.n_learnt_input_signals)]
 
             # Get the shared spike vector memory
             spike_bytes = neuron_utils.get_bytes_for_unpacked_spike_vector(
@@ -660,8 +672,8 @@ class EnsembleCluster(object):
         # Load each slice in turn, passing references to the shared memory
         for vertex in self.vertices:
             vertex.load_to_machine(
-                netlist, shared_input_vector, shared_spikes_vector,
-                sema_input, sema_spikes
+                netlist, shared_input_vector, shared_learnt_input_vector,
+                shared_spikes_vector, sema_input, sema_spikes
             )
 
     def get_profiler_data(self):
@@ -765,7 +777,8 @@ class EnsembleSlice(Vertex):
                                             {Cores: 1, SDRAM: sdram_usage})
 
     def load_to_machine(self, netlist, shared_input_vector,
-                        shared_spike_vector, sema_input, sema_spikes):
+                        shared_learnt_input_vector, shared_spike_vector,
+                        sema_input, sema_spikes):
         """Load the application data into memory."""
         # Get a block of memory for each of the regions
         self.region_memory = \
@@ -777,6 +790,7 @@ class EnsembleSlice(Vertex):
         # Add some arguments to the ensemble region
         for kwarg, val in (("shared_input_vector", shared_input_vector),
                            ("shared_spike_vector", shared_spike_vector),
+                           ("shared_learnt_input_vector", shared_learnt_input_vector),
                            ("sema_input", sema_input),
                            ("sema_spikes", sema_spikes)):
             self.region_arguments[Regions.ensemble].kwargs[kwarg] = val
@@ -839,11 +853,13 @@ class EnsembleRegion(regions.Region):
     Python representation of `ensemble_parameters_t`.
     """
     def __init__(self, machine_timestep, size_in, encoder_width,
-                 n_profiler_samples=0, record_spikes=False,
-                 record_voltages=False, record_encoders=False):
+                 n_learnt_input_signals, n_profiler_samples=0,
+                 record_spikes=False, record_voltages=False,
+                 record_encoders=False):
         self.machine_timestep = machine_timestep
         self.size_in = size_in
         self.encoder_width = encoder_width
+        self.n_learnt_input_signals = n_learnt_input_signals
         self.n_profiler_samples = n_profiler_samples
         self.record_spikes = record_spikes
         self.record_voltages = record_voltages
@@ -856,6 +872,7 @@ class EnsembleRegion(regions.Region):
                                 n_neurons_in_population, input_slice,
                                 neuron_slice, output_slice,
                                 learnt_output_slice, shared_input_vector,
+                                shared_learnt_input_vector,
                                 shared_spike_vector, sema_input, sema_spikes):
         """Write the region to a file-like.
 
@@ -877,6 +894,8 @@ class EnsembleRegion(regions.Region):
             Slice of the learnt decoded space produced by this ensemble.
         shared_input_vector : int
             Address of SDRAM used to combine input values.
+        shared_learnt_input_vector : list
+            List of addresses of SDRAM used to combine learnt input values.
         shared_spike_vector : int
             Address in SDRAM used to combine spike vectors.
         sema_input : int
@@ -904,7 +923,7 @@ class EnsembleRegion(regions.Region):
 
         # Pack and write the data
         fp.write(struct.pack(
-            "<17I",
+            "<%uI" % (18 + len(shared_learnt_input_vector)),
             self.machine_timestep,
             n_neurons,
             self.size_in,
@@ -917,11 +936,13 @@ class EnsembleRegion(regions.Region):
             n_decoder_rows,
             n_learnt_decoder_rows,
             self.n_profiler_samples,
+            self.n_learnt_input_signals,
             flags,
             shared_input_vector,
             shared_spike_vector,
             sema_input,
-            sema_spikes
+            sema_spikes,
+            *shared_learnt_input_vector
         ))
 
 

@@ -155,7 +155,7 @@ class Simulator(object):
                 status = self.controller.get_processor_status(p, x, y)
                 if status.cpu_state is not AppState.sync0:
                     print("Core ({}, {}, {}) in state {!s}".format(
-                        x, y, p, status.cpu_state))
+                        x, y, p, status))
                     print self.controller.get_iobuf(p, x, y)
             raise Exception("Unexpected core failures.")
 
@@ -287,7 +287,7 @@ class Simulator(object):
                 status = self.controller.get_processor_status(p, x, y)
                 if status.cpu_state is not desired_to_state:
                     print("Core ({}, {}, {}) in state {!s}".format(
-                        x, y, p, status.cpu_state))
+                        x, y, p, status))
                     print self.controller.get_iobuf(p, x, y)
             raise Exception("Unexpected core failures before reaching %s state." % desired_to_state)
 

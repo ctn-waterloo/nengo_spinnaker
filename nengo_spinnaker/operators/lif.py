@@ -762,6 +762,11 @@ class EnsembleSlice(Vertex):
             "learnt_output_slice": learnt_output_slice,
         })
 
+        # Add input width parameter to input filter regions that get sliced
+        input_width = input_slice.stop - input_slice.start
+        self.region_arguments[Regions.input_filters].kwargs["input_width"] = input_width
+        self.region_arguments[Regions.learnt_encoder_filters].kwargs["input_width"] = input_width
+
         # Compute the SDRAM usage
         sdram_usage = regions.utils.sizeof_regions_named(self.regions,
                                                          self.region_arguments)

@@ -129,7 +129,7 @@ class FilterRegion(Region):
         self.filters = filters
         self.dt = dt
 
-    def sizeof(self, *args):
+    def sizeof(self, *args, **kwargs):
         """Get the size of the filter region in bytes."""
         # 1 word + the size of the each filter (which includes a mandatory 4
         # words, which are the first 4 words in `filter_parameters_t`.)
@@ -144,10 +144,13 @@ class FilterRegion(Region):
         data = bytearray(self.sizeof())
         struct.pack_into("<I", data, 0, len(self.filters))
 
+        # Get optional input width from kwargs
+        input_width = kwargs.get("input_width")
+
         # Write in each region
         offset = 1
         for f in self.filters:
-            f.pack_into(self.dt, data, offset*4)
+            f.pack_into(self.dt, data, offset*4, input_width)
             offset += f.size_words() + 4
 
         # Write the data block to file
@@ -170,13 +173,13 @@ class Filter(object):
         """
         raise NotImplementedError
 
-    def pack_into(self, dt, buffer, offset=0):
+    def pack_into(self, dt, buffer, offset=0, input_width=None):
         """Pack the header struct describing the filter into the buffer."""
         # Pack the header
         struct.pack_into("<4I", buffer, offset,
                          self.size_words(),
                          self.method_index(),
-                         self.width,
+                         self.width if input_width is None else input_width,
                          0x1 if self.latching else 0x0)
 
         # Pack any data

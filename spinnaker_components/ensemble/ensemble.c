@@ -41,6 +41,10 @@ value_t **sdram_learnt_input_vector_local;  // Our porrtion of the shared learnt
 value_t *sdram_input_vector_local;          // Our portion of the shared input vector
 uint32_t *sdram_spikes_vector_local;        // Our portion of the shared spike vector
 
+// Index of learnt vector currently being DMAd (applies to both
+// WRITE_FILTERED_LEARNT_VECTOR and READ_WHOLE_LEARNED_VECTOR tags)
+uint32_t dma_learnt_vector = 0;
+
 // Input vectors corresponding to each learnt input signals - these are copied
 // From host, but would be a pain to append to the ensemble_parameters_t struct
 value_t **sdram_learnt_input_vector;
@@ -76,15 +80,51 @@ static inline void write_filtered_vector()
 // Writes the local section of the specified learnt input filter's output to SDRAM
 static inline void write_filtered_learnt_vector(uint32_t signal)
 {
+  // Cache index
+  dma_learnt_vector = signal;
+
   // Compute the size of the transfer
   uint size = sizeof(value_t) * ensemble.parameters.input_subspace.n_dims;
-  
+
   spin1_dma_transfer(
     WRITE_FILTERED_LEARNT_VECTOR,
     sdram_learnt_input_vector_local[signal],   // Section of the SDRAM vector we manage
     ensemble.learnt_input_local[signal],       // Section of the DTCM vector we're updating
     DMA_WRITE,
     size
+  );
+}
+/*****************************************************************************/
+
+/*****************************************************************************/
+// Reads whole input vector from SDRAM
+static inline void read_whole_vector()
+{
+  // Schedule reading in the whole input vector from SDRAM
+  value_t *sdram_input_vector = ensemble.parameters.sdram_input_vector;
+  spin1_dma_transfer(
+    READ_WHOLE_VECTOR,                 // Tag
+    sdram_input_vector,                // SDRAM address
+    ensemble.input,                    // DTCM address
+    DMA_READ,                          // Direction
+    sizeof(value_t) * ensemble.parameters.n_dims
+  );
+}
+/*****************************************************************************/
+
+/*****************************************************************************/
+// Reads whole input vector from SDRAM
+static inline void read_whole_learned_vector(uint32_t signal)
+{
+  // Cache index
+  dma_learnt_vector = signal;
+
+  spin1_dma_transfer(
+    READ_WHOLE_LEARNED_VECTOR,          // Tag
+    sdram_learnt_input_vector[signal],  // SDRAM address
+    ensemble.learnt_input[signal],      // DTCM address
+    DMA_READ,                           // Direction
+    sizeof(value_t) * ensemble.parameters.n_dims
   );
 }
 /*****************************************************************************/
@@ -351,21 +391,53 @@ void dma_complete(uint transfer_id, uint tag)
 {
   use(transfer_id);  // Unused
 
-  if (tag == WRITE_FILTERED_VECTOR)
+  if(tag == WRITE_FILTERED_LEARNT_VECTOR)
+  {
+    // Get index of next learnt vector
+    uint32_t next_learnt_vector = dma_learnt_vector + 1;
+
+    // If there are more to go, write next learnt vector to sdram
+    if(next_learnt_vector < ensemble.parameters.n_learnt_input_signals)
+    {
+      write_filtered_learnt_vector(next_learnt_vector);
+    }
+    // Otherwise, write filtered vector
+    else
+    {
+      write_filtered_vector();
+    }
+  }
+  else if (tag == WRITE_FILTERED_VECTOR)
   {
     // Wait for all cores to have written their input vectors into SDRAM
     sark_sema_lower((uchar *) ensemble.parameters.sema_input);
     while (*ensemble.parameters.sema_input) ;
 
-    // Schedule reading in the whole input vector from SDRAM
-    value_t *sdram_input_vector = ensemble.parameters.sdram_input_vector;
-    spin1_dma_transfer(
-      READ_WHOLE_VECTOR,                 // Tag
-      sdram_input_vector,                // SDRAM address
-      ensemble.input,                    // DTCM address
-      DMA_READ,                          // Direction
-      sizeof(value_t) * ensemble.parameters.n_dims
-    );
+    // If there are any learnt input signals to transfer, start reading of 1st signal
+    if(ensemble.parameters.n_learnt_input_signals > 0)
+    {
+      read_whole_learned_vector(0);
+    }
+    else
+    {
+      read_whole_vector();
+    }
+  }
+  else if(tag == READ_WHOLE_LEARNED_VECTOR)
+  {
+    // Get index of next learnt vector
+    uint32_t next_learnt_vector = dma_learnt_vector + 1;
+
+    // If there are more to go, read next learnt vector from sdram
+    if(next_learnt_vector < ensemble.parameters.n_learnt_input_signals)
+    {
+      read_whole_learned_vector(next_learnt_vector);
+    }
+    // Otherwise, read whole vector
+    else
+    {
+      read_whole_vector();
+    }
   }
   else if (tag == READ_WHOLE_VECTOR)
   {
@@ -405,22 +477,7 @@ void dma_complete(uint transfer_id, uint tag)
     // Decode and transmit neuron output
     decode_output_and_transmit(&ensemble);
   }
-  else if(tag >= WRITE_FILTERED_LEARNT_VECTOR)
-  {
-    // Extract index of potential next learnt vector from tag
-    uint next_learnt_vector = (tag - WRITE_FILTERED_LEARNT_VECTOR) + 1;
 
-    // If there are more to go, write next learnt vector to sdram
-    if(next_learnt_vector < ensemble.parameters.n_learnt_input_signals)
-    {
-      write_filtered_learnt_vector(next_learnt_vector);
-    }
-    // Otherwise, write filtered vector
-    else
-    {
-      write_filtered_vector();
-    }
-  }
 }
 /*****************************************************************************/
 
@@ -512,7 +569,7 @@ void c_main(void)
   MALLOC_OR_DIE(sdram_learnt_input_vector,
                 sizeof(value_t*) * params->n_learnt_input_signals);
   spin1_memcpy(sdram_learnt_input_vector,
-               (uint8_t*)region_start(ENSEMBLE_REGION, address) + sizeof(ensemble_parameters_t),
+               ((uint8_t*)region_start(ENSEMBLE_REGION, address)) + sizeof(ensemble_parameters_t),
                 sizeof(value_t*) * params->n_learnt_input_signals);
 
   // Prepare the input vector
@@ -533,8 +590,6 @@ void c_main(void)
   // Loop through learnt input signals
   for(uint32_t i = 0; i < params->n_learnt_input_signals; i++)
   {
-    io_printf(IO_BUF, "SDRAM %x", sdram_learnt_input_vector[i]);
-
     // Allocate vector
     MALLOC_OR_DIE(ensemble.learnt_input[i], sizeof(value_t) * params->n_dims);
 
@@ -545,6 +600,9 @@ void c_main(void)
     // Store SDRAM offset
     sdram_learnt_input_vector_local[i] = &sdram_learnt_input_vector[i][
       params->input_subspace.offset];
+
+    io_printf(IO_BUF, "Learnt input signal %u: learnt_input:%08x, learnt_input_local:%08x, sdram_learnt_input:%08x, sdram_learnt_input_local:%08x\n",
+      i, ensemble.learnt_input[i], ensemble.learnt_input_local[i], sdram_learnt_input_vector[i], sdram_learnt_input_vector_local[i]);
   }
 
   // Compute the spike size for writing into SDRAM

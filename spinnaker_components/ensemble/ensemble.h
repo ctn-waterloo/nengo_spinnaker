@@ -124,11 +124,13 @@ typedef struct _ensemble_state
 // Operation codes for DMA tags
 enum
 {
-  WRITE_FILTERED_VECTOR         = 0,  // Write subspace of input into SDRAM
-  READ_WHOLE_VECTOR             = 1,  // Read input vector into DTCM
-  WRITE_SPIKE_VECTOR            = 2,  // Write spike vector into SDRAM
-  READ_SPIKE_VECTOR             = 3,  // Read spike vector into DTCM for decoding
-  WRITE_FILTERED_LEARNT_VECTOR  = 4,  // Write subspace of learnt signal into SDRAM **NOTE** this must be last tag
+  WRITE_FILTERED_VECTOR,        // Write subspace of input into SDRAM
+  WRITE_FILTERED_LEARNT_VECTOR, // Write subspace of learnt signal into SDRAM
+  READ_WHOLE_VECTOR,            // Read input vector into DTCM
+  READ_WHOLE_LEARNED_VECTOR,    // Read learned vector into DTCM
+  WRITE_SPIKE_VECTOR,           // Write spike vector into SDRAM
+  READ_SPIKE_VECTOR,            // Read spike vector into DTCM for decoding
+
 } dma_tag_ops;
 /*****************************************************************************/
 

@@ -195,7 +195,14 @@ void simulate_neurons(
       // the inhibitory input times the gain and (c) the non-learnt encoded input.
       neuron_input += ensemble->bias[n];
       neuron_input += inhib_input * ensemble->gain[n];
-      neuron_input += dot_product(n_dims, encoder_vector, input);
+
+      // If there are any static input filters
+      // **YUCK** this potentially massive optimisation
+      // could also extend to memory by not allocating the encoders
+      if(input_filters.n_filters > 0)
+      {
+        neuron_input += dot_product(n_dims, encoder_vector, input);
+      }
 
       // Perform the neuron update
       if (neuron_step(n, neuron_input, ensemble->state, &record_voltages))

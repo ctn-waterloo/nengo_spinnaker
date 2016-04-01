@@ -1,8 +1,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "fixed_point.h"
 #include "profiler.h"
-#include "nengo_typedefs.h"
 
 #ifndef __ENSEMBLE_H__
 #define __ENSEMBLE_H__
@@ -122,7 +122,7 @@ static value_t decode_spike_train(
 )
 {
   // Resultant decoded value
-  value_t output = 0.0k;
+  value_t output = 0;
 
   // For each population
   for (uint32_t p = 0; p < n_populations; p++)

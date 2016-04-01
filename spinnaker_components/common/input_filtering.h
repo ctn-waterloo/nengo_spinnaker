@@ -53,7 +53,7 @@
 
 #include "common-typedefs.h"
 #include "nengo-common.h"
-#include "nengo_typedefs.h"
+#include "fixed_point.h"
 
 #ifndef __INPUT_FILTERING_H__
 #define __INPUT_FILTERING_H__
@@ -89,7 +89,7 @@ static inline void _if_filter_input(if_filter_t *filter,
   // The new accumulator value for this filter is either the current value plus
   // the new value or just the new value depending on the value of the mask.
   filter->input->value[dimension] = \
-    kbits(bitsk(filter->input->value[dimension]) & filter->input->mask) + \
+    (filter->input->value[dimension] & filter->input->mask) + \
     value;
 }
 
@@ -107,8 +107,7 @@ static inline void _if_filter_step(if_filter_t* filter)
   // accumulator to zero or will leave it at its current value.
   for (uint32_t n = 0; n < filter->size; n++)
   {
-    filter->input->value[n] = kbits(bitsk(filter->input->value[n]) &
-                                    ~filter->input->mask);
+    filter->input->value[n] = filter->input->value[n] & ~filter->input->mask;
   }
 
   // Re-enable interrupts
@@ -181,7 +180,7 @@ static inline bool input_filtering_input_with_dimension_offset(
         // The packet matches this entry and is in the range of dimensions
         // expected; include the contribution from the packet and indicate that
         // we have handled the packet.
-        _if_filter_input(filter, dim, kbits(payload));
+        _if_filter_input(filter, dim, payload);
         handled = true;
       }
     }
@@ -225,7 +224,7 @@ static inline void input_filtering_step(
   // function call.
   for (uint32_t d = filters->output_size; d > 0; d--)
   {
-    filters->output[d - 1] = 0.0k;
+    filters->output[d - 1] = 0;
   }
 
   // Apply all of the filter step functions and accumulate the outputs of the

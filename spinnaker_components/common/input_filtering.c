@@ -44,8 +44,8 @@ void _lowpass_filter_step(uint32_t n_dims, value_t *input,
 {
   // Cast the params
   lowpass_state_t *params = (lowpass_state_t *) pars;
-  register int32_t a = bitsk(params->a);
-  register int32_t b = bitsk(params->b);
+  register int32_t a = params->a;
+  register int32_t b = params->b;
 
   // Apply the filter to every dimension (realised as a Direct Form I digital
   // filter).
@@ -60,15 +60,15 @@ void _lowpass_filter_step(uint32_t n_dims, value_t *input,
     register int64_t next_output;
 
     // Perform the first multiply
-    int32_t current_output = bitsk(output[d]);
+    int32_t current_output = output[d];
     next_output = __smull(current_output, a);
 
     // Perform the multiply accumulate
-    int32_t current_input = bitsk(input[d]);
+    int32_t current_input = input[d];
     next_output = __smlal(next_output, current_input, b);
 
     // Scale the result back down to store it
-    output[d] = kbits(convert_s32_30_s16_15(next_output));
+    output[d] = (value_t) (next_output >> FP_N_FRAC);
   }
 }
 
@@ -149,15 +149,15 @@ void _lti_filter_step(uint32_t n_dims, value_t *input,
       //     output[dd] += ab.b * xyz.b;
       ab_t ab = state->abs[k];
       ab_t xyz = xy[m];
-      output_val = __smlal(output_val, bitsk(ab.a), bitsk(xyz.a));
-      output_val = __smlal(output_val, bitsk(ab.b), bitsk(xyz.b));
+      output_val = __smlal(output_val, ab.a, xyz.a);
+      output_val = __smlal(output_val, ab.b, xyz.b);
     }
 
     // Include the initial new input
     xy[state->n].b = input[dd];
 
     // Save the current output for later steps
-    output[dd] = kbits(convert_s32_30_s16_15(output_val));
+    output[dd] = (value_t) (output_val >> FP_N_FRAC);
     xy[state->n].a = output[dd];
   }
 

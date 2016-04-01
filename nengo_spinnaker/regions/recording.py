@@ -66,7 +66,7 @@ class VoltageRecordingRegion(RecordingRegion):
     """Region used to record neuron input voltages.
 
     Voltage regions use 1 short per neuron per timestep but pad each frame to a
-    multiple of words.
+    multiple of words. Voltages are stored as U1.15 values.
     """
     def bytes_per_frame(self, n_neurons):
         words_per_frame = n_neurons // 2 + n_neurons % 2

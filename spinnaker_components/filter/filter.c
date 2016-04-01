@@ -25,7 +25,6 @@
 /*****************************************************************************/
 #include <stdint.h>
 #include "spin1_api.h"
-#include "nengo_typedefs.h"
 #include "fixed_point.h"
 #include "input_filtering.h"
 #include "common-impl.h"
@@ -74,7 +73,7 @@ void timer_tick(uint ticks, uint arg1)
     // Perform the dot-product and transmit the packet
     value_t output = dot_product(params.input_size, row, filters.output);
 
-    while (!spin1_send_mc_packet(key, bitsk(output), WITH_PAYLOAD))
+    while (!spin1_send_mc_packet(key, output, WITH_PAYLOAD))
     {
     }
   }

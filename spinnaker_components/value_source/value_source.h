@@ -4,7 +4,7 @@
 #include "spin1_api.h"
 #include "common-impl.h"
 #include "nengo-common.h"
-#include "nengo_typedefs.h"
+#include "fixed_point.h"
 
 typedef struct _system_parameters_t {
   uint time_step;     //!< Time step of the ValueSource in us

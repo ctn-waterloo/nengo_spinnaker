@@ -1,4 +1,5 @@
 #include "spin1_api.h"
+#include <stdbool.h>
 
 #ifndef __NENGO_COMMON_H__
 #define __NENGO_COMMON_H__

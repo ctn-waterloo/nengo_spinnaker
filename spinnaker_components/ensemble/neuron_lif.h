@@ -74,19 +74,20 @@ static inline bool neuron_step(
 
   // Compute the change in voltage
   value_t voltage = lif_state->voltages[neuron];
-  value_t delta_v = (input - voltage) *
-                    lif_state->parameters.exp_dt_over_tau_rc;
+  value_t delta_v = fp_mull(
+    (input - voltage),lif_state->parameters.exp_dt_over_tau_rc
+  );
 
   // Update the voltage, but clip it to 0.0
   voltage += delta_v;
-  if (bitsk(voltage) < bitsk(0.0k))
+  if (voltage < 0)
   {
-    voltage = 0.0k;
+    voltage = 0;
   }
 
   // If the neuron hasn't fired then simply store the voltage and return false
   // to indicate that no spike was produced.
-  if (bitsk(voltage) <= bitsk(1.0k))
+  if (voltage <= FP_CONST_1_0)
   {
     lif_state->voltages[neuron] = voltage;
     record_voltage(rec_voltages, neuron, voltage);
@@ -96,11 +97,11 @@ static inline bool neuron_step(
   // The neuron has spiked, so we prepare to set the voltage and refractory
   // period for the next simulation period.
   uint8_t tau_ref = (uint8_t) lif_state->parameters.tau_ref;
-  voltage -= 1.0k;
+  voltage -= FP_CONST_1_0;
 
   // If the overshoot was particularly big further decrease the neuron voltage
   // and refractory period.
-  if (bitsk(voltage) > bitsk(2.0k))
+  if (voltage > FP_CONST_2_0)
   {
     tau_ref--;
     voltage -= delta_v;

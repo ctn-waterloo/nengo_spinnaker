@@ -17,7 +17,7 @@
 #include "spin1_api.h"
 #include "common-impl.h"
 #include "nengo-common.h"
-#include "nengo_typedefs.h"
+#include "fixed_point.h"
 
 /** \brief Shared Rx parameters.
  */

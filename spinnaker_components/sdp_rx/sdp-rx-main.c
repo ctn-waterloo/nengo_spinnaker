@@ -13,9 +13,7 @@ void sdp_rx_tick(uint ticks, uint arg1) {
 
   for (uint d = 0; d < g_sdp_rx.n_dimensions; d++) {
     if (g_sdp_rx.fresh[d]) {
-      spin1_send_mc_packet(g_sdp_rx.keys[d],
-                           bitsk(g_sdp_rx.output[d]),
-                           WITH_PAYLOAD);
+      spin1_send_mc_packet(g_sdp_rx.keys[d], g_sdp_rx.output[d], WITH_PAYLOAD);
       g_sdp_rx.fresh[d] = false;
 
       spin1_delay_us(1);

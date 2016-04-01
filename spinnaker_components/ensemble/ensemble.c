@@ -59,7 +59,7 @@ void simulate_neurons(
       // Compute the neuron input, this is a combination of (a) the bias, (b)
       // the inhibitory input times the gain and (c) the encoded input.
       value_t neuron_input = ensemble->bias[n];
-      neuron_input += inhib_input * ensemble->gain[n];
+      neuron_input += fp_mull(inhib_input, ensemble->gain[n]);
       neuron_input += dot_product(n_dims,
                                   &ensemble->encoders[n_dims * n],
                                   input);
@@ -131,7 +131,7 @@ static inline void decode_output_and_transmit(const ensemble_state_t *ensemble)
                                         row, spike_vector);
 
     // Transmit this value (keep trying until it sends)
-    while(!spin1_send_mc_packet(keys[n], bitsk(output), WITH_PAYLOAD))
+    while(!spin1_send_mc_packet(keys[n], output, WITH_PAYLOAD))
     {
     }
   }

@@ -1,4 +1,5 @@
 import nengo
+from nengo.exceptions import ConfigError
 import pytest
 from rig import place_and_route as par
 
@@ -12,6 +13,7 @@ def test_add_spinnaker_params():
     # Create a network
     with nengo.Network() as net:
         n_ft = nengo.Node(lambda t: [t, t**2])
+        ptn = nengo.Node(size_in=2)
 
     # Setting SpiNNaker-specific options before calling `add_spinnaker_params`
     # should fail.
@@ -25,6 +27,12 @@ def test_add_spinnaker_params():
         assert param in str(excinfo.value)
 
     for param, value in [
+            ("optimize_out", False),
+            ]:
+        with pytest.raises(AttributeError) as excinfo:
+            setattr(net.config[ptn], param, value)
+
+    for param, value in [
             ("placer", lambda r, n, m, c: None),
             ("placer_kwargs", {}),
             ("allocater", lambda r, n, m, c, p: None),
@@ -34,7 +42,7 @@ def test_add_spinnaker_params():
             ("node_io", None),
             ("node_io_kwargs", {}),
             ]:
-        with pytest.raises(KeyError) as excinfo:
+        with pytest.raises(ConfigError) as excinfo:
             setattr(net.config[Simulator], param, value)
         assert "Simulator" in str(excinfo.value)
 
@@ -43,11 +51,12 @@ def test_add_spinnaker_params():
 
     assert net.config[nengo.Node].function_of_time is False
     assert net.config[nengo.Node].function_of_time_period is None
+    assert net.config[nengo.Node].optimize_out is None
 
     assert net.config[Simulator].placer is par.place
     assert net.config[Simulator].placer_kwargs == {}
-    assert net.config[Simulator].allocater is par.allocate
-    assert net.config[Simulator].allocater_kwargs == {}
+    assert net.config[Simulator].allocator is par.allocate
+    assert net.config[Simulator].allocator_kwargs == {}
     assert net.config[Simulator].router is par.route
     assert net.config[Simulator].router_kwargs == {}
 
@@ -59,7 +68,7 @@ def test_callable_parameter_validate():
     """Test that the callable parameter fails to validate if passed something
     other than a callable.
     """
-    cp = CallableParameter()
+    cp = CallableParameter("test")
 
     with pytest.raises(ValueError) as excinfo:
         cp.validate(None, "Not a function")

@@ -49,6 +49,7 @@ uint32_t dma_learnt_vector = 0;
 // From host, but would be a pain to append to the ensemble_parameters_t struct
 value_t **sdram_learnt_input_vector;
 
+
 uint32_t unpadded_spike_vector_size;
 uint spikes_write_size;
 
@@ -484,7 +485,6 @@ void dma_complete(uint transfer_id, uint tag)
     // Decode and transmit neuron output
     decode_output_and_transmit(&ensemble);
   }
-
 }
 /*****************************************************************************/
 

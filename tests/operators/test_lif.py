@@ -26,27 +26,30 @@ class TestEnsembleLIF(object):
 
 @pytest.mark.parametrize(
     ("machine_timestep", "size_in", "encoder_width", "n_populations",
-     "n_neurons_in_population", "population_id", "input_slice",
-     "neuron_slice", "output_slice", "learnt_output_slice",
-     "shared_input_vector", "shared_spike_vector", "sema_input",
-     "sema_spikes", "n_profiler_samples"),
-    [(1000, 3, 4, 4, 100, 0, slice(0, 3), slice(0, 25), slice(0, 10), slice(0, 0),
-      0x6780, 0x7800, 0x7804, 0x7808, 0),
-     (2000, 1, 2, 4, 101, 4, slice(1, 5), slice(22, 25), slice(3, 10), slice(3, 10),
-      0x6780, 0x7800, 0x6000, 0x6004, 6000),
+     "n_neurons_in_population", "population_id", "n_learnt_input_signals",
+     "input_slice", "neuron_slice", "output_slice", "learnt_output_slice",
+     "shared_input_vector", "shared_learnt_input_vector",
+     "shared_spike_vector", "sema_input", "sema_spikes", "n_profiler_samples"),
+    [(1000, 3, 4, 4, 100, 0, 0, slice(0, 3), slice(0, 25), slice(0, 10), slice(0, 0),
+      0x6780, [], 0x7800, 0x7804, 0x7808, 0),
+     (2000, 1, 2, 4, 101, 4, 1, slice(1, 5), slice(22, 25), slice(3, 10), slice(3, 10),
+      0x6780, [0x5000], 0x7800, 0x6000, 0x6004, 6000),
      ])
 @pytest.mark.parametrize("record_spikes", (True, False))
 @pytest.mark.parametrize("record_voltages", (True, False))
 @pytest.mark.parametrize("record_encoders", (True, False))
 def test_EnsembleRegion(machine_timestep, size_in, encoder_width,
                         n_populations, n_neurons_in_population, population_id,
+                        n_learnt_input_signals,
                         input_slice, neuron_slice, output_slice,
                         learnt_output_slice, shared_input_vector,
-                        shared_spike_vector, sema_input, sema_spikes,
+                        shared_learnt_input_vector, shared_spike_vector,
+                        sema_input, sema_spikes,
                         n_profiler_samples, record_spikes, record_voltages,
                         record_encoders):
     # Create the region
     region = lif.EnsembleRegion(machine_timestep, size_in, encoder_width,
+                                n_learnt_input_signals,
                                 record_spikes=record_spikes,
                                 record_voltages=record_voltages,
                                 record_encoders=record_encoders)
@@ -55,14 +58,15 @@ def test_EnsembleRegion(machine_timestep, size_in, encoder_width,
     region.n_profiler_samples = n_profiler_samples
 
     # Check that the size is reported correctly
-    assert region.sizeof() == 4*17  # 17 words
+    assert region.sizeof() == (18 + n_learnt_input_signals) * 4
 
     # Check that the region is written out correctly
     fp = tempfile.TemporaryFile()
     region.write_subregion_to_file(
         fp, n_populations, population_id, n_neurons_in_population, input_slice,
         neuron_slice, output_slice, learnt_output_slice, shared_input_vector,
-        shared_spike_vector, sema_input, sema_spikes
+        shared_learnt_input_vector, shared_spike_vector,
+        sema_input, sema_spikes
     )
 
     # Check that the correct amount of data was written
@@ -80,7 +84,9 @@ def test_EnsembleRegion(machine_timestep, size_in, encoder_width,
         flags |= 1 << 2
 
     # Check that the data was correct
-    assert struct.unpack("<17I", data) == (
+    unpacked = struct.unpack("<%uI" % (18 + n_learnt_input_signals), data)
+
+    assert unpacked[:18] == (
         machine_timestep,
         neuron_slice.stop - neuron_slice.start,
         size_in,
@@ -93,12 +99,14 @@ def test_EnsembleRegion(machine_timestep, size_in, encoder_width,
         output_slice.stop - output_slice.start,
         learnt_output_slice.stop - learnt_output_slice.start,
         n_profiler_samples,
+        n_learnt_input_signals,
         flags,
         shared_input_vector,
         shared_spike_vector,
         sema_input,
-        sema_spikes
-    )
+        sema_spikes)
+
+    assert list(unpacked[18:18 + n_learnt_input_signals]) == shared_learnt_input_vector
 
 
 @pytest.mark.parametrize(

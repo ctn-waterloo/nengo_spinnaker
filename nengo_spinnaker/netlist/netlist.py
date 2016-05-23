@@ -1,10 +1,13 @@
 import logging
 from rig import place_and_route  # noqa : F401
-from rig.place_and_route.constraints import ReserveResourceConstraint
 
-from rig.place_and_route.utils import (build_application_map,
-                                       build_routing_tables)
-from rig.machine import Cores
+from rig.place_and_route.utils import (build_machine,
+                                       build_core_constraints,
+                                       build_application_map)
+from rig.routing_table import (build_routing_table_target_lengths,
+                               routing_tree_to_tables,
+                               minimise_tables)
+from rig.place_and_route import Cores
 from rig.machine_control.utils import sdram_alloc_for_vertices
 from six import iteritems
 
@@ -71,10 +74,7 @@ class Netlist(object):
         self.routes = dict()
         self.vertices_memory = dict()
 
-        # Add a constraint to keep the monitor processor clear
-        self.constraints.append(ReserveResourceConstraint(Cores, slice(0, 1)))
-
-    def place_and_route(self, machine,
+    def place_and_route(self, system_info,
                         place=place_and_route.place,
                         place_kwargs={},
                         allocate=place_and_route.allocate,
@@ -85,8 +85,10 @@ class Netlist(object):
 
         Parameters
         ----------
-        machine : :py:class:`~rig.machine.Machine`
-            Machine onto which the netlist should be placed and routed.
+        system_info : \
+                :py:class:`~rig.machine_control.MachineController.SystemInfo`
+            Describes the system onto which the netlist should be placed and
+            routed.
 
         Other Parameters
         ----------------
@@ -104,6 +106,12 @@ class Netlist(object):
         route_kwargs : dict
             Keyword arguments for the router function.
         """
+        # Generate a Machine and set of core-reserving constraints to prevent
+        # the use of non-idle cores.
+        machine = build_machine(system_info)
+        core_constraints = build_core_constraints(system_info)
+        constraints = self.constraints + core_constraints
+
         # Build a map of vertices to the resources they require, get a list of
         # constraints.
         vertices_resources = {v: v.resources for v in self.vertices}
@@ -111,9 +119,9 @@ class Netlist(object):
         # Perform placement and allocation
         place_nets = list(utils.get_nets_for_placement(self.nets))
         self.placements = place(vertices_resources, place_nets, machine,
-                                self.constraints, **place_kwargs)
+                                constraints, **place_kwargs)
         self.allocations = allocate(vertices_resources, place_nets, machine,
-                                    self.constraints, self.placements,
+                                    constraints, self.placements,
                                     **allocate_kwargs)
 
         # Identify clusters and modify vertices appropriately
@@ -137,10 +145,10 @@ class Netlist(object):
         # Finally, route all nets using the extended resource dictionary,
         # placements and allocations.
         self.routes = route(vertices_resources, route_nets, machine,
-                            self.constraints, extended_placements,
+                            constraints, extended_placements,
                             extended_allocations, **route_kwargs)
 
-    def load_application(self, controller):
+    def load_application(self, controller, system_info):
         """Load the netlist to a SpiNNaker machine.
 
         Parameters
@@ -154,7 +162,11 @@ class Netlist(object):
         net_keys = {n: (ks.get_value(tag=self.keyspaces.routing_tag),
                         ks.get_mask(tag=self.keyspaces.routing_tag))
                     for n, ks in iteritems(self.net_keyspaces)}
-        routing_tables = build_routing_tables(self.routes, net_keys)
+
+        routing_tables = routing_tree_to_tables(self.routes, net_keys)
+        target_lengths = build_routing_table_target_lengths(system_info)
+        routing_tables = minimise_tables(routing_tables, target_lengths)
+
         controller.load_routing_tables(routing_tables)
 
         # Assign memory to each vertex as required

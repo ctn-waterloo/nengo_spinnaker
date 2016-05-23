@@ -13,16 +13,17 @@ from nengo.base import ObjView
 from nengo.connection import LearningRule
 from nengo.learning_rules import PES, Voja
 import numpy as np
-from rig.machine import Cores, SDRAM
+from rig.place_and_route import Cores, SDRAM
 from rig.place_and_route.constraints import SameChipConstraint
 from six import iteritems
 import struct
 
-from nengo_spinnaker.builder.builder import netlistspec
 from nengo_spinnaker.builder.model import InputPort, OutputPort
+from nengo_spinnaker.builder.netlist import netlistspec
 from nengo_spinnaker.builder.ports import EnsembleInputPort, EnsembleOutputPort
 from nengo_spinnaker.regions.filters import (FilterRegion, FilterRoutingRegion,
                                              add_filters, make_filter_regions)
+from nengo_spinnaker.regions.utils import Args
 from .. import regions
 from nengo_spinnaker.netlist import Vertex
 from nengo_spinnaker import partition

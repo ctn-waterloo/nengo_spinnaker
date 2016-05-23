@@ -7,6 +7,7 @@ from rig.type_casts import NumpyFloatToFixConverter, NumpyFixToFloatConverter
 
 from nengo_spinnaker.regions import recording as rr
 
+
 class TestWordRecordingRegion(object):
     @pytest.mark.parametrize(
         "n_steps, vertex_slice, words_per_frame",
@@ -122,7 +123,7 @@ class TestVoltageRegion(object):
         expected = NumpyFixToFloatConverter(15)(voltages_fp)
         assert np.all(array == expected[:,:-1])
 
-
+        
 class TestEncoderRegion(object):
     """Encoder learning regions use 1 word per neuron per dimension per timestep"""
     @pytest.mark.parametrize(
@@ -170,4 +171,3 @@ class TestEncoderRegion(object):
         # Check that the data is correct
         expected = NumpyFixToFloatConverter(15)(encoders_fp)
         assert np.all(array.reshape(n_words) == expected)
-

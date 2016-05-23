@@ -2,7 +2,7 @@ import collections
 import numpy as np
 from rig.machine_control.consts import SCP_PORT
 from rig.machine_control.packets import SCPPacket
-from rig.machine import Cores
+from rig.place_and_route import Cores
 from six import iteritems
 import socket
 import threading
@@ -85,7 +85,7 @@ class Ethernet(NodeIOController):
 
         # Set up the IP tag (will need to do this for each ethernet connected
         # chip that we expect to use).
-        self.in_socket.bind(('', 50007))
+        self.in_socket.bind(('', 0))
         with controller(x=0, y=0):
             controller.iptag_set(1, *self.in_socket.getsockname())
 

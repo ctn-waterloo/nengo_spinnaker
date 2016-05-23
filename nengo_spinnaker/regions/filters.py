@@ -148,9 +148,10 @@ class FilterRegion(Region):
         input_width = kwargs.get("input_width")
 
         # Write in each region
+        filter_width = kwargs.get("filter_width")
         offset = 1
         for f in self.filters:
-            f.pack_into(self.dt, data, offset*4, input_width)
+            f.pack_into(self.dt, data, offset*4, width=filter_width)
             offset += f.size_words() + 4
 
         # Write the data block to file
@@ -173,13 +174,13 @@ class Filter(object):
         """
         raise NotImplementedError
 
-    def pack_into(self, dt, buffer, offset=0, input_width=None):
+    def pack_into(self, dt, buffer, offset=0, width=None):
         """Pack the header struct describing the filter into the buffer."""
         # Pack the header
         struct.pack_into("<4I", buffer, offset,
                          self.size_words(),
                          self.method_index(),
-                         self.width if input_width is None else input_width,
+                         width or self.width,
                          0x1 if self.latching else 0x0)
 
         # Pack any data
@@ -288,8 +289,8 @@ class LinearFilter(Filter):
         ab = np.vstack((-a[1:], b[1:])).T.flatten()
 
         # Convert the values to fixpoint and write into a data buffer
-        struct.pack_into("<I", buffer, offset, self.order)
-        buffer[offset + 4:4+self.order*8] = tp.np_to_fix(ab).tostring()
+        struct.pack_into("<I{}s".format(self.order * 2 * 4), buffer, offset,
+                         self.order, tp.np_to_fix(ab).tostring())
 
 
 class FilterRoutingRegion(Region):

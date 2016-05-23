@@ -1,14 +1,14 @@
 import collections
 import math
 import numpy as np
-from rig.machine import Cores, SDRAM
+from rig.place_and_route import Cores, SDRAM
 import struct
 
 from nengo.processes import Process
 from nengo.utils import numpy as npext
 
-from nengo_spinnaker.builder.builder import netlistspec
 from nengo_spinnaker.builder.model import OutputPort
+from nengo_spinnaker.builder.netlist import netlistspec
 from nengo_spinnaker.netlist import VertexSlice
 from nengo_spinnaker import partition
 from nengo_spinnaker import regions

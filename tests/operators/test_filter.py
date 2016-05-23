@@ -1,44 +1,86 @@
 import mock
 import numpy as np
 import pytest
+from rig.place_and_route import Cores
 import struct
 import tempfile
 
-from nengo_spinnaker.builder.model import SignalParameters
-from nengo_spinnaker.builder.node import PassthroughNodeTransmissionParameters
-from nengo_spinnaker.operators.filter import (SystemRegion,
+from nengo_spinnaker.builder import Model
+from nengo_spinnaker.builder.model import SignalParameters, OutputPort
+from nengo_spinnaker.operators.filter import (SystemRegion, Filter, Regions,
                                               get_transforms_and_keys)
+from nengo_spinnaker.builder.ensemble import EnsembleTransmissionParameters
+from nengo_spinnaker.builder.node import PassthroughNodeTransmissionParameters
 
 
-class TestSystemRegion(object):
-    def test_sizeof(self):
-        # Create a system region, assert that the size is reported correctly.
-        sr = SystemRegion(size_in=5, size_out=10, machine_timestep=1000,
-                          transmission_delay=1)
-
-        # Should always be 4 words
-        assert sr.sizeof(slice(None)) == 16
-
+class TestFilter(object):
     @pytest.mark.parametrize(
-        "size_in, size_out, machine_timestep, transmission_delay",
-        [(5, 16, 2000, 6),
-         (10, 1, 1000, 1)]
+        "size_in, n_expected_slices",
+        [(32, 1), (64, 1), (256, 2), (512, 4), (1024, 8), (2056, 17)]
     )
-    def test_write_subregion_to_file(self, size_in, size_out, machine_timestep,
-                                     transmission_delay):
-        # Create the region
-        sr = SystemRegion(size_in=size_in, size_out=size_out,
-                          machine_timestep=machine_timestep,
-                          transmission_delay=transmission_delay)
+    def test_init(self, size_in, n_expected_slices):
+        """Check that the filter is broken into column-slices correctly."""
+        f = Filter(size_in)
+        assert len(f.groups) == n_expected_slices
+        assert all(g.size_in < 528 for g in f.groups)
 
-        # Write the region to file, assert the values are sane
-        fp = tempfile.TemporaryFile()
-        sr.write_subregion_to_file(fp, slice(None))
+    def test_make_vertices_no_outgoing_signals(self):
+        """Test that no vertices or constraints result if there are no outgoing
+        signals.
+        """
+        # Create a small filter operator
+        filter_op = Filter(3)
 
-        fp.seek(0)
-        assert struct.unpack("<4I", fp.read()) == (
-            size_in, size_out, machine_timestep, transmission_delay
+        # Create an empty model
+        m = Model()
+
+        # Make vertices using the model
+        netlistspec = filter_op.make_vertices(m, 10000)
+        assert len(netlistspec.vertices) == 0
+        assert netlistspec.load_function is None
+        assert netlistspec.before_simulation_function is None
+        assert netlistspec.after_simulation_function is None
+        assert netlistspec.constraints is None
+
+    def test_make_vertices_one_group_many_cores_1_chip(self):
+        """Test that many vertices are returned if the matrix has many rows and
+        that there is an appropriate constraint forcing the co-location of the
+        vertices.
+        """
+        # Create a small filter operator
+        filter_op = Filter(3)
+
+        # Create a model and add some connections which will cause packets to
+        # be transmitted from the filter operator.
+        m = Model()
+        signal_parameters = SignalParameters(False, 3, m.keyspaces["nengo"])
+        signal_parameters.keyspace.length = 32
+
+        transmission_parameters = \
+            PassthroughNodeTransmissionParameters(np.ones((32*3, 3)))
+        m.connection_map.add_connection(
+            filter_op, OutputPort.standard, signal_parameters,
+            transmission_parameters, None, None, None
         )
+
+        # Make vertices using the model
+        netlistspec = filter_op.make_vertices(m, 10000)
+        assert len(netlistspec.vertices) == 2  # Two vertices
+
+        for vx in netlistspec.vertices:
+            assert "filter" in vx.application
+
+            assert vx.resources[Cores] == 1
+
+            assert vx.regions[Regions.system].column_slice == slice(0, 3)
+
+            keys_region = vx.regions[Regions.keys]
+            assert keys_region.keyspaces == [
+                signal_parameters.keyspace(index=i) for i in range(32*3)]
+            assert len(keys_region.fields) == 1
+            assert keys_region.partitioned == True
+
+            assert vx.regions[Regions.transform].matrix.shape == (32*3, 3)
 
 
 def test_get_transforms_and_keys():
@@ -75,13 +117,21 @@ def test_get_transforms_and_keys():
     pars = [(sig_a, conn_a), (sig_b, conn_b)]
 
     # Get the transforms and keys
-    transforms, keys = get_transforms_and_keys(pars)
+    transforms, keys, signal_parameter_slices = get_transforms_and_keys(pars)
 
     # Check that the transforms and keys are correct
     assert set(keys) == set([sig_a_ks_0, sig_a_ks_1, sig_b_ks_0])
     assert transforms.shape == (len(keys), 2)
     assert (np.all(transforms[0] == transform_b) or
             np.all(transforms[2] == transform_b))
+
+    # Check that the signal parameter slices are correct
+    for (par, sl) in signal_parameter_slices:
+        if par == conn_a:
+            assert sl == set(range(0, 2)) or sl == set(range(1, 3))
+        else:
+            assert par == conn_b
+            assert sl == set(range(0, 1)) or sl == set(range(2, 3))
 
 
 @pytest.mark.parametrize("latching", [False, True])
@@ -107,7 +157,7 @@ def test_get_transforms_and_keys_removes_zeroed_rows(latching):
     signals_connections = [(sig, conn)]
 
     # Get the transform and keys
-    t, keys = get_transforms_and_keys(signals_connections)
+    t, keys, _ = get_transforms_and_keys(signals_connections)
 
     if not latching:
         # Check the transform is correct
@@ -142,7 +192,7 @@ def test_get_transforms_and_keys_nothing():
     """Check that no transform and no keys are returned for empty connection
     sets.
     """
-    tr, keys = get_transforms_and_keys([])
+    tr, keys, _ = get_transforms_and_keys([])
 
     assert keys == list()
     assert tr.ndim == 2

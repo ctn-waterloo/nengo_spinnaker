@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.stats import binned_statistic
 from six import iterkeys, itervalues
 
 def print_summary(profiling_data, duration):
@@ -8,6 +7,8 @@ def print_summary(profiling_data, duration):
     Showing how much time is spent in each profiler tag
     """
     ms_time_bins = np.arange(duration * 1000.0)
+
+    from scipy.stats import binned_statistic
 
     # Summarise data for all tags
     for tag_name, times in profiling_data.iteritems():
@@ -49,6 +50,9 @@ def write_csv_row(profiling_data, duration_s, dt_s, csv_writer, extra_column_val
     Write a row into standard profiler format CSV with user values
     followed by mean times for each profiler tag extracted from profiling_data
     """
+
+    from scipy.stats import binned_statistic
+    
     timestep_bins = np.arange(0.0, duration_s * 1000.0, dt_s * 1000.0)
 
     # Calculate mean of all profiling tags

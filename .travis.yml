@@ -24,11 +24,5 @@ script :
 after_success : coveralls
 notifications:
         email: false
-addons:
-        apt:
-                packages:
-                        - python-scipy
-                        - gfortran
-                        - liblapack-dev
 
 

@@ -1,6 +1,7 @@
 import numpy as np
 from six import iterkeys, itervalues
 
+
 def print_summary(profiling_data, duration):
     """
     Print a summary of the profiling data to standard out
@@ -45,14 +46,15 @@ def write_csv_header(profiling_data, csv_writer, extra_column_headers):
     csv_writer.writerow(extra_column_headers + list(iterkeys(profiling_data)))
 
 
-def write_csv_row(profiling_data, duration_s, dt_s, csv_writer, extra_column_values):
+def write_csv_row(profiling_data, duration_s, dt_s, csv_writer,
+                  extra_column_values):
     """
     Write a row into standard profiler format CSV with user values
     followed by mean times for each profiler tag extracted from profiling_data
     """
 
     from scipy.stats import binned_statistic
-    
+
     timestep_bins = np.arange(0.0, duration_s * 1000.0, dt_s * 1000.0)
 
     # Calculate mean of all profiling tags

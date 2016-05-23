@@ -144,9 +144,6 @@ class FilterRegion(Region):
         data = bytearray(self.sizeof())
         struct.pack_into("<I", data, 0, len(self.filters))
 
-        # Get optional input width from kwargs
-        input_width = kwargs.get("input_width")
-
         # Write in each region
         filter_width = kwargs.get("filter_width")
         offset = 1

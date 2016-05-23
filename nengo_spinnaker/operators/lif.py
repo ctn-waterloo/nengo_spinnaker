@@ -765,8 +765,10 @@ class EnsembleSlice(Vertex):
 
         # Add input width parameter to input filter regions that get sliced
         input_width = input_slice.stop - input_slice.start
-        self.region_arguments[Regions.input_filters].kwargs["input_width"] = input_width
-        self.region_arguments[Regions.learnt_encoder_filters].kwargs["input_width"] = input_width
+        self.region_arguments[Regions.input_filters].\
+            kwargs["filter_width"] = input_width
+        self.region_arguments[Regions.learnt_encoder_filters].\
+            kwargs["filter_width"] = input_width
 
         # Compute the SDRAM usage
         sdram_usage = regions.utils.sizeof_regions_named(self.regions,
@@ -794,11 +796,12 @@ class EnsembleSlice(Vertex):
             )
 
         # Add some arguments to the ensemble region
-        for kwarg, val in (("shared_input_vector", shared_input_vector),
-                           ("shared_spike_vector", shared_spike_vector),
-                           ("shared_learnt_input_vector", shared_learnt_input_vector),
-                           ("sema_input", sema_input),
-                           ("sema_spikes", sema_spikes)):
+        for kwarg, val in (
+                ("shared_input_vector", shared_input_vector),
+                ("shared_spike_vector", shared_spike_vector),
+                ("shared_learnt_input_vector", shared_learnt_input_vector),
+                ("sema_input", sema_input),
+                ("sema_spikes", sema_spikes)):
             self.region_arguments[Regions.ensemble].kwargs[kwarg] = val
 
         # Modify the keyword arguments to the keys region to include the
@@ -920,7 +923,7 @@ class EnsembleRegion(regions.Region):
             learnt_output_slice.start
 
         assert len(shared_learnt_input_vector) == self.n_learnt_input_signals
-        
+
         # Add the flags
         flags = 0x0
         for i, predicate in enumerate((self.record_spikes,
@@ -1164,11 +1167,6 @@ def get_decoders_and_keys(signals_connections, minimise=False):
     assert len(keys) == decoders.shape[0]
 
     return decoders, keys
-
-
-class Args(collections.namedtuple("Args", "args, kwargs")):
-    def __new__(cls, *args, **kwargs):
-        return super(Args, cls).__new__(cls, args, kwargs)
 
 
 def _get_basic_region_arguments(neuron_slice, output_slice,

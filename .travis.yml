@@ -28,4 +28,6 @@ addons:
         apt:
                 packages:
                         - python-scipy
+                        - liblapack-dev
+
 

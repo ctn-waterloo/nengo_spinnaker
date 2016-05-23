@@ -1048,8 +1048,8 @@ class PESRegion(regions.Region):
 
     def get_sliced_learning_rules(self, learnt_output_slice):
         return [l for l in self.learning_rules
-                if (l.decoder_start < learnt_output_slice.stop
-                    and l.decoder_stop > learnt_output_slice.start)]
+                if (l.decoder_start < learnt_output_slice.stop and
+                    l.decoder_stop > learnt_output_slice.start)]
 
 VojaLearningRule = collections.namedtuple(
     "VojaLearningRule",

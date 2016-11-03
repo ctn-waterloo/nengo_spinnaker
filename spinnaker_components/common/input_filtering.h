@@ -125,8 +125,16 @@ typedef struct _if_route_t
 
   uint32_t dimension_mask;  // Mask to extract the index of the component
 
-  uint32_t input_index; // Index of the input add the packet to
+  if_filter_t *filter;  // Filter in which to include the packet contribution
 } if_route_t;
+
+/* A collection of filter routes.
+ */
+typedef struct _if_routing_table_t
+{
+  uint32_t n_routes;   // Number of routes in the routing table
+  if_route_t *routes;  // Entries in the routing table
+} if_routing_table_t;
 
 /* A collection of filters which share routing information (and possibly an
  * accumulated output value).
@@ -135,9 +143,7 @@ typedef struct _if_collection_t
 {
   // Mandatory components
   uint32_t n_filters;  // Number of filters
-  uint32_t n_routes;   // Number of routing entries
   if_filter_t *filters;  // Filters
-  if_route_t *routes;    // Packet to filter routes
 
   // Optional components
   uint32_t output_size;  // Size of output vector (may be 0)
@@ -154,7 +160,7 @@ typedef struct _if_collection_t
  * handled as normal, otherwise it is deemed to have not matched the route.
  */
 static inline bool input_filtering_input_with_dimension_offset(
-    if_collection_t* filters, uint32_t key, uint32_t payload,
+    if_routing_table_t* routes, uint32_t key, uint32_t payload,
     uint32_t dim_offset, uint32_t max_dim_sub_one
 )
 {
@@ -162,11 +168,10 @@ static inline bool input_filtering_input_with_dimension_offset(
 
   // Look at all the routing entries, if we match an entry then include the
   // packet in the indicated input vector.
-  for (uint32_t n = 0; n < filters->n_routes; n++)
+  for (uint32_t n = 0; n < routes->n_routes; n++)
   {
     // Get the routing entry and the filter referred to by the entry
-    if_route_t route = filters->routes[n];
-    if_filter_t *filter = &filters->filters[route.input_index];
+    if_route_t route = routes->routes[n];
 
     if ((key & route.mask) == route.key)
     {
@@ -181,7 +186,7 @@ static inline bool input_filtering_input_with_dimension_offset(
         // The packet matches this entry and is in the range of dimensions
         // expected; include the contribution from the packet and indicate that
         // we have handled the packet.
-        _if_filter_input(filter, dim, kbits(payload));
+        _if_filter_input(route.filter, dim, kbits(payload));
         handled = true;
       }
     }
@@ -194,13 +199,13 @@ static inline bool input_filtering_input_with_dimension_offset(
  * packet matched any routing entries, otherwise returns false.
  */
 static inline bool input_filtering_input(
-    if_collection_t* filters, uint32_t key, uint32_t payload
+    if_routing_table_t* routes, uint32_t key, uint32_t payload
 )
 {
   // Input with no dimensional offset, the given arguments result in an
   // optimised version of the previous method being inlined.
   return input_filtering_input_with_dimension_offset(
-    filters, key, payload, 0, UINT32_MAX
+    routes, key, payload, 0, UINT32_MAX
   );
 }
 
@@ -252,9 +257,22 @@ static inline void input_filtering_step(
  * `routes` should be an array of `_if_routes` preceded with a single word
  * indicating the number of entries.
  */
+typedef struct
+{
+  uint32_t key, mask, dimension_mask, filter_index;
+} input_filter_route_t;
+
+typedef struct
+{
+  uint32_t n_routes;
+  input_filter_route_t routes[];
+} filter_routes_t;
+
 void input_filtering_get_routes(
     if_collection_t *filters,
-    uint32_t *routes);
+    if_routing_table_t *routing_table,
+    filter_routes_t *routes
+);
 
 /* Copy in a set of filters.
  *
@@ -267,6 +285,18 @@ void input_filtering_get_filters(
     if_collection_t *filters,
     uint32_t *data,
     value_t **filter_output_array);
+
+/* Copy multiple sets of filter routes into a single routing table.
+ */
+typedef struct _filter_arg
+{
+  if_collection_t *filters;
+  filter_routes_t *routes;
+} filter_arg_t;
+
+void input_filter_build_combined_routes(
+  if_routing_table_t *routing_table, unsigned int n, filter_arg_t *args
+);
 
 /* Initialise a filter collection with an output accumulator.
  *

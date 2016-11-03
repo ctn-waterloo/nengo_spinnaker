@@ -41,6 +41,9 @@ if_collection_t modulatory_filters;
 // Each output is encoded by a seperate encoder so these are also left seperate
 if_collection_t learnt_encoder_filters;
 
+if_routing_table_t filter_routing_sliced_inputs;
+if_routing_table_t filter_routing_unsliced_inputs;
+
 value_t **sdram_learnt_input_vector_local;  // Our porrtion of the shared learnt input vector
 value_t *sdram_input_vector_local;          // Our portion of the shared input vector
 uint32_t *sdram_spikes_vector_local;        // Our portion of the shared spike vector
@@ -404,21 +407,11 @@ void process_queue()
       uint32_t key = packet.key;
       uint32_t payload = packet.payload;
 
-      // Standard input
       input_filtering_input_with_dimension_offset(
-        &input_filters, key, payload, offset, max_dim_sub_one
+        &filter_routing_sliced_inputs, key, payload,
+        offset, max_dim_sub_one
       );
-
-      // Learnt encoder input
-      input_filtering_input_with_dimension_offset(
-        &learnt_encoder_filters, key, payload, offset, max_dim_sub_one
-      );
-
-      // Inhibitory
-      input_filtering_input(&inhibition_filters, key, payload);
-
-      // Modulatory
-      input_filtering_input(&modulatory_filters, key, payload);
+      input_filtering_input(&filter_routing_unsliced_inputs, key, payload);
     }
     else
     {
@@ -682,30 +675,50 @@ void c_main(void)
   input_filtering_get_filters(&input_filters,
                               region_start(INPUT_FILTERS_REGION, address),
                               NULL);
-  input_filtering_get_routes(&input_filters,
-                             region_start(INPUT_ROUTING_REGION, address));
   input_filters.output_size = params->input_subspace.n_dims;
   input_filters.output = ensemble.input_local;
 
   input_filtering_get_filters(&inhibition_filters,
                               region_start(INHIB_FILTERS_REGION, address),
                               NULL);
-  input_filtering_get_routes(&inhibition_filters,
-                             region_start(INHIB_ROUTING_REGION, address));
   inhibition_filters.output_size = 1;
   inhibition_filters.output = &ensemble.inhibitory_input;
 
   input_filtering_get_filters(&modulatory_filters,
                               region_start(MODULATORY_FILTERS_REGION, address),
                               NULL);
-  input_filtering_get_routes(&modulatory_filters,
-                             region_start(MODULATORY_ROUTING_REGION, address));
 
   input_filtering_get_filters(&learnt_encoder_filters,
                               region_start(LEARNT_ENCODER_FILTERS_REGION, address),
                               ensemble.learnt_input_local);
-  input_filtering_get_routes(&learnt_encoder_filters,
-                             region_start(LEARNT_ENCODER_ROUTING_REGION, address));
+
+  filter_arg_t sliced_inputs[] = {
+    {.filters = &input_filters,
+     .routes = (filter_routes_t *) region_start(INPUT_ROUTING_REGION, address)
+    },
+    {.filters = &learnt_encoder_filters,
+     .routes = (filter_routes_t *) region_start(LEARNT_ENCODER_ROUTING_REGION, address)
+    },
+  };
+  input_filter_build_combined_routes(
+    &filter_routing_sliced_inputs,
+    sizeof(sliced_inputs) / sizeof(filter_arg_t),
+    sliced_inputs
+  );
+
+  filter_arg_t unsliced_inputs[] = {
+    {.filters = &inhibition_filters,
+     .routes = (filter_routes_t *) region_start(INHIB_ROUTING_REGION, address)
+    },
+    {.filters = &modulatory_filters,
+     .routes = (filter_routes_t *) region_start(MODULATORY_ROUTING_REGION, address)
+    },
+  };
+  input_filter_build_combined_routes(
+    &filter_routing_unsliced_inputs,
+    sizeof(unsliced_inputs) / sizeof(filter_arg_t),
+    unsliced_inputs
+  );
   // Copy in encoders
   uint encoder_size = sizeof(value_t) * params->n_neurons *
                       params->encoder_width;

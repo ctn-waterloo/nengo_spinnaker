@@ -55,7 +55,7 @@ def assign_mn_net_ids(nets_routes, prior_constraints=None):
     )
 
 
-def build_mn_net_graph(nets_routes, prior_constraints=None):
+def build_mn_net_graph(nets_routes, prior_constraints=None, NodeSet=set):
     """Build a graph the nodes of which represent multicast nets and the edges
     of which represent constraints upon which nets may share keys.
 
@@ -68,16 +68,21 @@ def build_mn_net_graph(nets_routes, prior_constraints=None):
         Existing constraints to include within the net graph presented as an
         adjacency list.
 
+    Other Parameters
+    ----------------
+    NodeSet : type, optional (default=set)
+        A set-like type used to store the edge list for a node.
+
     Returns
     -------
-    {Net: {Net, ...}, ...}
+    {Net: NodeSet, ...}
         An adjacency list representation of a graph where the presence of an
         edge indicates that two multicast nets may not share a routing key.
     """
     # The different sets of routes from a chip indicate nets which cannot share
     # a routing key, this is indicated by creating an edge between those `nets'
     # in the net graph.
-    net_graph = {net: set() for net in iterkeys(nets_routes)}
+    net_graph = {net: NodeSet() for net in iterkeys(nets_routes)}
 
     # Construct a map from chips to unique sets of routes from that chip to
     # nets which take that route whilst simultaneously using this data
@@ -241,7 +246,7 @@ def build_cluster_graph(signal_routes):
     return cluster_graph
 
 
-def colour_graph(graph):
+def colour_graph(graph, NodeSet=set):
     """Assign colours to each node in a graph such that connected nodes do not
     share a colour.
 
@@ -250,6 +255,11 @@ def colour_graph(graph):
     graph : {node: {node, ...}, ...}
         An adjacency list representation of a graph where the presence of an
         edge indicates that two nodes may not share a colour.
+
+    Other Parameters
+    ----------------
+    NodeSet : type, optional (default=set)
+        A set-like type used to store the nodes should be assigned a colour.
 
     Returns
     -------
@@ -301,12 +311,14 @@ def colour_graph(graph):
                 # a new colour for the node.
                 for group in colours:
                     if graph[node].isdisjoint(group):
-                        group.add(node)
-                        break
+                        break  # `group' represents the selected set
                 else:
                     # Cannot colour this node with any of the existing colours,
                     # so create a new colour.
-                    colours.append({node})
+                    group = NodeSet()
+                    colours.append(group)
+
+                group.add(node)  # Add the node to the set
 
                 # Add unvisited connected nodes to the queue
                 for vx in graph[node]:

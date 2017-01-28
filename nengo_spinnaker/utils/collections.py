@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from bitarray import bitarray
 import collections
 
 
@@ -161,3 +162,57 @@ class counter(object):
     def __call__(self):
         self._count += 1
         return self._count
+
+
+class MemberSet(object):
+    """A set-like type which can store members of a given set of elements.
+    """
+    # A class-wide mapping from domains to an ordering of the elements of the
+    # domain.
+    domains = dict()
+
+    def __init__(self, domain):
+        # Store a reference to the domain and the ordering, creating a new
+        # ordering if it hasn't previously been observed.
+        self._domain = domain
+
+        if domain not in MemberSet.domains:
+            MemberSet.domains[domain] = {e: i for i, e in enumerate(domain)}
+        self._domain_ordering = MemberSet.domains[domain]
+
+        # Create a bitstring containing sufficient room to represent which
+        # elements of the domain are present in the set.
+        self._elements = bitarray(len(self._domain))
+        self._elements.setall(False)
+
+    def __iter__(self):
+        for bit, elem in zip(self._elements, self._domain):
+            if bit:
+                yield elem
+
+    def _get_index(self, elem):
+        return self._domain_ordering[elem]
+
+    def __len__(self):
+        return self._elements.count()
+
+    def add(self, elem):
+        # Get the bit position from the ordering and then add it
+        self._elements[self._get_index(elem)] = True
+
+    def __contains__(self, elem):
+        # Get the bit position from the ordering and then test
+        return self._elements[self._get_index(elem)]
+
+    def isdisjoint(self, other):
+        """Return True if the set has no elements in common with other.
+
+        Sets are disjoint if and only if their intersection is the empty set.
+        """
+        # Check that the sets have equivalent domains
+        if self._domain is not other._domain:
+            raise ValueError("Cannot compare sets with different domains.")
+
+        # The intersection of the sets should be empty
+        intersection = self._elements & other._elements
+        return not intersection.any()

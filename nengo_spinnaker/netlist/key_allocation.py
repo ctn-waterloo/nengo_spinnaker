@@ -1,5 +1,7 @@
 import logging
 from collections import defaultdict, deque
+from functools import partial
+from nengo_spinnaker.utils.collections import MemberSet
 from six import iteritems, iterkeys, itervalues
 
 logger = logging.getLogger(__name__)
@@ -50,9 +52,12 @@ def assign_mn_net_ids(nets_routes, prior_constraints=None):
     {net: int}
         Mapping from each multiple source net to a valid identifier.
     """
-    return colour_graph(
-        build_mn_net_graph(nets_routes, prior_constraints)
-    )
+    # We construct a type to store lists of vertices
+    NodeSet = partial(MemberSet, tuple(iterkeys(nets_routes)))
+
+    # Build and colour the graph using this type
+    graph = build_mn_net_graph(nets_routes, prior_constraints, NodeSet)
+    return colour_graph(graph, NodeSet)
 
 
 def build_mn_net_graph(nets_routes, prior_constraints=None, NodeSet=set):
